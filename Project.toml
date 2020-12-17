@@ -1,7 +1,10 @@
 name = "NeutronTransport"
 uuid = "161f4978-d3bb-4696-90f4-058341551711"
-authors = ["Ramiro Vignolo <ramirovignolo@gmail.com> and contributors"]
+authors = ["Ramiro Vignolo <ramirovignolo@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+RayTracing = "3007c720-8091-40db-9339-e09e4eb4c7ea"
 
 [compat]
 julia = "1.5"
