@@ -106,16 +106,14 @@ At the beginning of the section, we stated that the source term is known. Howeve
 
 ```math
 q_g(s, \boldsymbol{\hat{\Omega}}) =
- \sum_{g^\prime=1}^G \int_{4\pi} \Sigma^s_{g^\prime \rightarrow g}(s, \boldsymbol{\hat{\Omega}^\prime} \rightarrow \boldsymbol{\hat{\Omega}}) \cdot \psi_{g^\prime}(s, \boldsymbol{\hat{\Omega}^\prime}) \, d\boldsymbol{\hat{\Omega}^\prime} \quad +
- \frac{\chi_g(s)}{4\pi k_{\text{eff}}} \sum_{g^\prime=1}^G \int_{4\pi} \nu\Sigma^f_{g^\prime}(s) \cdot \psi_{g^\prime}(s, \boldsymbol{\hat{\Omega}^\prime}) \, d\boldsymbol{\hat{\Omega}^\prime}.
+ \sum_{g^\prime=1}^G \int_{4\pi} \Sigma^s_{g^\prime \rightarrow g}(s, \boldsymbol{\hat{\Omega}^\prime} \rightarrow \boldsymbol{\hat{\Omega}}) \cdot \psi_{g^\prime}(s, \boldsymbol{\hat{\Omega}^\prime}) \, d\boldsymbol{\hat{\Omega}^\prime} \quad + \frac{\chi_g(s)}{4\pi k_{\text{eff}}} \sum_{g^\prime=1}^G \int_{4\pi} \nu\Sigma^f_{g^\prime}(s) \cdot \psi_{g^\prime}(s, \boldsymbol{\hat{\Omega}^\prime}) \, d\boldsymbol{\hat{\Omega}^\prime}.
 ```
 
 for eigenvalue problems (without external sources). Additionally, when considering isotropic scattering, the previous expression reduces to:
 
 ```math
  q_g(s, \boldsymbol{\hat{\Omega}}) =
- \frac{1}{4\pi} \sum_{g^\prime=1}^G \Sigma^s_{g^\prime \rightarrow g}(s) \cdot \phi_{g^\prime}(s) \quad +
- \frac{\chi_g(s)}{4\pi k_{\text{eff}}} \sum_{g^\prime=1}^G \nu\Sigma^f_{g^\prime}(s) \cdot \phi_{g^\prime}(s)  = q_g(s).
+ \frac{1}{4\pi} \sum_{g^\prime=1}^G \Sigma^s_{g^\prime \rightarrow g}(s) \cdot \phi_{g^\prime}(s) \quad + \frac{\chi_g(s)}{4\pi k_{\text{eff}}} \sum_{g^\prime=1}^G \nu\Sigma^f_{g^\prime}(s) \cdot \phi_{g^\prime}(s)  = q_g(s).
 ```
 
 Consequently, even though the ODE may be integrated to find a solution, an iterative scheme over the source term must be used to converge to the true solution. Commonly, each of these iterations is known as a *transport sweep*.
