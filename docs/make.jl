@@ -18,4 +18,5 @@ makedocs(;
 
 deploydocs(;
     repo="github.com/rvignolo/NeutronTransport.jl",
+    devbranch = "main"
 )
