@@ -8,7 +8,7 @@ makedocs(;
     sitename="NeutronTransport.jl",
     format=Documenter.HTML(;
         prettyurls=false,
-        canonical="https://rvignolo.github.io/FirstPkg.jl",
+        canonical="https://rvignolo.github.io/NeutronTransport.jl",
         assets=String[],
     ),
     pages=[
