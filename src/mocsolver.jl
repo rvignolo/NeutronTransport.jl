@@ -1,12 +1,3 @@
-module NeutronTransport
-
-using UnPack
-using RayTracing
-using RayTracing: TrackGenerator, PolarQuadrature, Quadrature, num_dims, num_cells
-
-include("formulation.jl")
-include("problem.jl")
-include("solver.jl")
 
 struct MoCSolver{T<:Real,G<:TrackGenerator,PQ<:PolarQuadrature,Q<:Quadrature}
     # as part of the type?
@@ -61,6 +52,10 @@ function MoCSolver(
     )
 end
 
+macro angular_index(t, d, p, g)
+    return :(t * 2 * n_polar_2 * groups + d * n_polar_2 * groups + p * groups + g)
+end
+
 solve(moc::MoCSolver) = _solve_eigenvalue_problem(moc)
 
 function _solve_eigenvalue_problem(moc::MoCSolver{T}) where {T<:Real}
@@ -102,10 +97,67 @@ end
 @inline update_prev_φ!(moc::MoCSolver) = copy!(moc.φ_prev, moc.φ)
 @inline update_boundary_ψ!(moc::MoCSolver) = copy!(moc.boundary_ψ, moc.start_boundary_ψ)
 
+function normalize_fluxes!(moc::MocSolver{T}) where {T}
 
-macro angular_index(t, d, p, g)
-    return :(t * 2 * n_polar_2 * groups + d * n_polar_2 * groups + p * groups + g)
+    @unpack mesh = moc.trackgenerator
+
+    total_fission_source = zero(T)
+
+    for i in 1:moc.nfsr
+
+        #! no existe esto aun
+        #! dada una cell tenemos que conseguir el material, i.e. las secciones eficaces
+        cell = mesh.cells[i]
+        material = cell.material
+
+        # TODO: check if for loop is faster
+        total_fission_source += sum(
+            material.xs.νΣf[g′] * φ[cell.index[g′]] * cell.volume for g′ in 1:moc.groups
+        )
+
+    end
+
+    normalization_factor = 1 / total_fission_source
+    φ .*= normalization_factor
+    φ_prev .*= normalization_factor
+    boundary_ψ .*= normalization_factor
+    start_boundary_ψ .*= normalization_factor
+
+    return nothing
 end
+
+function compute_q!(moc::MoCSolver{T}) where {T}
+
+    for i in 1:moc.nfsr
+
+        #! no existe esto aun
+        #! dada una cell tenemos que conseguir el material, i.e. las secciones eficaces
+        cell = mesh.cells[i]
+        material = cell.material
+
+        for g in 1:groups
+
+            # use view instead
+
+            reduced_source[cell.index[g]] = zero(T)
+
+            for g′ in 1:groups
+                reduced_source[cell.index[g]] += material.xs.νΣS0[g′][g] * φ[cell.index[g_prime]]
+                reduced_source[cell.index[g]] += 1 / keff * χ[g] * material.xs.νΣf[g′] * φ[cell.index[g_prime]]
+            end
+
+            #! aca se computa Σtotal
+
+
+            reduced_source[cell.index[g]] /= (4 * π * material.xs.Σt[g])
+        end
+
+    end
+
+    return nothing
+end
+
+function compute_φ(moc::MoCSolver)
 
 
 end
