@@ -44,6 +44,9 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1.5'
+      - name: install RayTracing
+        run: |
+          julia --project=docs -e 'using Pkg; Pkg.add(PackageSpec(url="https://github.com/rvignolo/RayTracing.jl"))'
       - run: |
           julia --project=docs -e '
             using Pkg
