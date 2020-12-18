@@ -1,12 +1,16 @@
 module NeutronTransport
 
+using UnPack
 using RayTracing
-using RayTracing: TrackGenerator, PolarQuadrature, Quadrature
+using RayTracing: TrackGenerator, PolarQuadrature, Quadrature, num_dims, num_cells
 
 abstract type Formulation end
 
 struct MethodOfCharacteristics <: Formulation end
+struct CollisionProbability <: Formulation end
+
 const MoC = MethodOfCharacteristics
+const CP = CollisionProbability
 
 struct NeutronTransportProblem{F,S}
     formulation::F
@@ -123,6 +127,9 @@ function update_prev_φ!(moc::MoCSolver)
 
 end
 
+macro angular_index(t, d, p, g)
+    return :(t * 2 * n_polar_2 * groups + d * n_polar_2 * groups + p * groups + g)
+end
 
 function update_boundary_ψ!(moc::MoCSolver)
     @unpack dimension, groups, boundary_ψ, start_boundary_ψ, trackgenerator, polar_quadrature = moc
@@ -143,15 +150,5 @@ function update_boundary_ψ!(moc::MoCSolver)
 
     return nothing
 end
-
-macro angular_index(t, d, p, g)
-    return :(t * 2 * n_polar_2 * groups + d * n_polar_2 * groups + p * groups + g)
-end
-
-
-
-
-
-
 
 end
