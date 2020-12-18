@@ -19,13 +19,15 @@ At first, representative lattices used to be unique 2D square *pin cells* geomet
 
 ## Method of Characteristics
 
-The Method of Characteristics (MOC) was the selected formulation since it overcomes the main limitation for the Collision Probability (CP) method: it does not produce full square matrices of order equal to the number of regions in the domain times the energy groups, so it is possible to solve problems with many more regions.
+The Method of Characteristics obtains the neutron flux distribution by solving the characteristic form of the transport equation over tracks that emulate neutron trajectories across the problem domain.
+
+It was the selected formulation since it overcomes the main limitation for the Collision Probability (CP) method: it does not produce full square matrices of order equal to the number of regions in the domain times the energy groups, so it is possible to solve problems with many more regions.
 
 In this context, an efficient ray tracing algorithm for unstructured meshes (see [RayTracing.jl](https://github.com/rvignolo/RayTracing.jl)) was developed in first place. Now, this package allows computing the scalar flux per region and energy group by collecting all mean angular fluxes over track segments and region sources.
 
-The Method of Characteristics obtains the neutron flux distribution by solving the characteristic form of the transport equation over tracks that emulate neutron trajectories across the problem domain.
-
 ## Nomenclature
+
+The following is the nomenclature used in the documentation:
 
 | .                              |       .                     |  .              |          .             |
 |--------------------------------|-----------------------------|-----------------|------------------------|
@@ -53,4 +55,67 @@ The steady-state integro-differential neutron transport equation is extensively 
  + \Sigma^t_g(\vec{x}) \cdot \psi_g(\vec{x}, \boldsymbol{\hat{\Omega}}) = q_g(\vec{x}, \boldsymbol{\hat{\Omega}}).
 ```
 
-This equation defines a linear first-order partial differential equation (PDE) if we assume that the flux is known inside the source term. Then, it can be casted to a family of linear first-order ordinary differential equations (ODEs) by means of the method of characteristics. In this context, we would want to transform the linear first-order PDE into an ODE along the appropriate curve $\vec{x}(s)$; i.e. something of the form:
+This equation defines a linear first-order partial differential equation (PDE) if we assume that the flux is known inside the source term ``q_g(\vec{x}, \boldsymbol{\hat{\Omega}})``. Then, it can be casted to a family of linear first-order ordinary differential equations (ODEs) by means of the method of characteristics. In this context, we would want to transform the linear first-order PDE into an ODE along the appropriate curve ``\vec{x}(s)``; i.e. something of the form:
+
+```math
+\frac{d}{ds} \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}) = F(\vec{x}(s), \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}})).
+```
+
+Using the chain rule, we get:
+
+```math
+\frac{d}{ds} \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}) = \frac{\partial \psi}{\partial x} \frac{dx}{ds} +
+                     \frac{\partial \psi}{\partial y} \frac{dy}{ds} +
+                     \frac{\partial \psi}{\partial z} \frac{dz}{ds} =
+                     \frac{d \vec{x}}{ds} \cdot \nabla \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}),
+```
+
+which, inserted in equation the previous equation, yields:
+
+```math
+\frac{d \vec{x}}{ds} \cdot \nabla \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}) = F(\vec{x}(s), \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}})).
+```
+
+By setting ``d \vec{x} / ds = \boldsymbol{\hat{\Omega}}``, we get:
+
+```math
+\boldsymbol{\hat{\Omega}} \cdot \nabla \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}) = F(\vec{x}(s), \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}})),
+```
+
+which is equivalent to the original PDE if:
+
+```math
+F(\vec{x}(s), \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}})) = q(\vec{x}(s), \boldsymbol{\hat{\Omega}}) - \Sigma^t(\vec{x}(s)) \cdot \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}).
+```
+
+Now, solving equation ``\vec{x}(s)`` yields to the parametric equations of the characteristic curves:
+
+```math
+ \vec{x}(s) = \vec{x}_0 + s \boldsymbol{\hat{\Omega}},
+```
+
+for arbitrary ``\vec{x}_0``. It can be conclude that, along the characteristic curves ``\vec{x}(s)``, the original PDE becomes the following ODE:
+
+```math
+\frac{d}{ds} \psi_g(s, \boldsymbol{\hat{\Omega}}) + \Sigma^t_g(s) \cdot \psi_g(s, \boldsymbol{\hat{\Omega}}) = q_g(s, \boldsymbol{\hat{\Omega}}),
+```
+
+where the abuse of notation ``\vec{x}_0 + s \boldsymbol{\hat{\Omega}} \rightarrow s`` has been used.
+
+At the beginning of the section, we stated that the source term is known. However, in reality, the source term in the transport equation is unknown, since it is given by:
+
+```math
+q_g(s, \boldsymbol{\hat{\Omega}}) =
+ \sum_{g^\prime=1}^G \int_{4\pi} \Sigma^s_{g^\prime \rightarrow g}(s, \boldsymbol{\hat{\Omega}^\prime} \rightarrow \boldsymbol{\hat{\Omega}}) \cdot \psi_{g^\prime}(s, \boldsymbol{\hat{\Omega}^\prime}) \, d\boldsymbol{\hat{\Omega}^\prime} \quad +
+ \frac{\chi_g(s)}{4\pi k_{\text{eff}}} \sum_{g^\prime=1}^G \int_{4\pi} \nu\Sigma^f_{g^\prime}(s) \cdot \psi_{g^\prime}(s, \boldsymbol{\hat{\Omega}^\prime}) \, d\boldsymbol{\hat{\Omega}^\prime}.
+```
+
+for eigenvalue problems (without external sources). Additionally, when considering isotropic scattering, the previous expression reduces to:
+
+```math
+ q_g(s, \boldsymbol{\hat{\Omega}}) =
+ \frac{1}{4\pi} \sum_{g^\prime=1}^G \Sigma^s_{g^\prime \rightarrow g}(s) \cdot \phi_{g^\prime}(s) \quad +
+ \frac{\chi_g(s)}{4\pi k_{\text{eff}}} \sum_{g^\prime=1}^G \nu\Sigma^f_{g^\prime}(s) \cdot \phi_{g^\prime}(s)  = q_g(s).
+```
+
+Consequently, even though the ODE may be integrated to find a solution, an iterative scheme over the source term must be used to converge to the true solution. Commonly, each of these iterations is known as a *transport sweep*.
