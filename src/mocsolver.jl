@@ -97,7 +97,7 @@ end
 @inline update_prev_φ!(moc::MoCSolver) = copy!(moc.φ_prev, moc.φ)
 @inline update_boundary_ψ!(moc::MoCSolver) = copy!(moc.boundary_ψ, moc.start_boundary_ψ)
 
-function normalize_fluxes!(moc::MocSolver{T}) where {T}
+function normalize_fluxes!(moc::MoCSolver{T}) where {T}
 
     @unpack mesh = moc.trackgenerator
 
@@ -157,7 +157,4 @@ function compute_q!(moc::MoCSolver{T}) where {T}
     return nothing
 end
 
-function compute_φ(moc::MoCSolver)
-
-
-end
+function compute_φ(moc::MoCSolver) end
