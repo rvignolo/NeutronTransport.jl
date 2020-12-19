@@ -8,6 +8,7 @@ RayTracing = "3007c720-8091-40db-9339-e09e4eb4c7ea"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
+UnPack = "1.0"
 julia = "1.5"
 
 [extras]
