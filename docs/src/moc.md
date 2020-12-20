@@ -57,7 +57,7 @@ Using the chain rule, we get:
                      \frac{d \vec{x}}{ds} \cdot \nabla \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}),
 ```
 
-which, inserted in equation the previous equation, yields:
+which, inserted in the previous equation, yields:
 
 ```math
 \frac{d \vec{x}}{ds} \cdot \nabla \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}}) = F(\vec{x}(s), \psi(\vec{x}(s), \boldsymbol{\hat{\Omega}})).

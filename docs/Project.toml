@@ -1,4 +1,5 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+DocumenterCitations = "daee34ce-89f3-4625-b898-19384cb65244"
 NeutronTransport = "161f4978-d3bb-4696-90f4-058341551711"
 RayTracing = "3007c720-8091-40db-9339-e09e4eb4c7ea"
