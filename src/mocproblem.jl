@@ -13,7 +13,7 @@ struct MoCProblem{T<:Real,G<:TrackGenerator,Q<:Quadrature,M}
     φ::Vector{T} # me parece que algo de Gridap va a ser mejor
     φ_prev::Vector{T}
 
-    reduced_souce::Vector{T}
+    reduced_source::Vector{T}
 
     # angular flux
     nψ::Int
@@ -24,7 +24,7 @@ struct MoCProblem{T<:Real,G<:TrackGenerator,Q<:Quadrature,M}
     quadrature::Q
 
     materials::M
-    cells_tag::Vector{Int8}  # gridap cell to gridap tag
+    cell_tag::Vector{Int8}  # gridap cell to gridap tag
     tag_to_idx::Vector{Int8} #  gridap tag to NeutronTransport material index
 end
 
@@ -50,12 +50,10 @@ function MoCProblem(
     boundary_ψ = Vector{T}(undef, nψ)
     start_boundary_ψ = Vector{T}(undef, nψ)
 
-    #! TODO: mapear dado un indice de celda y un indice de grupo, el φ index que le corresponde
-
     quadrature = Quadrature(azimuthal_quadrature, pq)
 
     face_labeling = get_face_labeling(tg.mesh.model)
-    cells_tag = get_face_tag(face_labeling, dimension)
+    cell_tag = get_face_tag(face_labeling, dimension)
     tag_to_name = face_labeling.tag_to_name
     tag_to_idx = Vector{Int8}(undef, length(tag_to_name))
 
@@ -74,21 +72,30 @@ function MoCProblem(
 
     return MoCProblem(
         dimension, groups, nfsr, max_iter, max_residual, nφ, φ, φ_prev, reduced_source, nψ,
-        boundary_ψ, start_boundary_ψ, tg, quadrature, materials_v, cells_tag, tag_to_idx
+        boundary_ψ, start_boundary_ψ, tg, quadrature, materials_v, cell_tag, tag_to_idx
     )
 end
 
+# si quiero que los primeros nfsr sean para el 1er group, etc...
+# macro region_index(i, g)
+#     return :((g - 1) * nfsr + i)
+# end
+
+# si quiero que esten intercalados
+macro region_index(i, g)
+    return esc(:((i - 1) * groups + g))
+end
+# puedo hacerlas como function con @inline pero necesitan `groups` o `nfsr`
+
 macro angular_index(t, d, p, g)
-    return :(t * 2 * n_polar_2 * groups + d * n_polar_2 * groups + p * groups + g)
+    return esc(:(t * 2 * n_polar_2 * groups + d * n_polar_2 * groups + p * groups + g))
 end
 
 solve(moc::MoCProblem) = _solve_eigenvalue_problem(moc)
 
 function _solve_eigenvalue_problem(moc::MoCProblem{T}) where {T<:Real}
 
-    #! donde lo almacenamos? seguro tienen que ser visible para todos
     keff = one(T)
-
     set_uniform_φ!(moc, one(T))
     update_prev_φ!(moc)
     set_uniform_start_boundary_ψ!(moc, zero(T))
@@ -98,7 +105,7 @@ function _solve_eigenvalue_problem(moc::MoCProblem{T}) where {T<:Real}
     while iter < moc.max_iterations
 
         normalize_fluxes!(moc)
-        compute_q!(moc)
+        compute_q!(moc, keff)
         compute_φ!(moc)
         keff = multiplication_factor(moc) #! ojo este se debe usar en calculos!
         ϵ = residual(moc)
@@ -124,65 +131,77 @@ end
 @inline update_boundary_ψ!(moc::MoCProblem) = copy!(moc.boundary_ψ, moc.start_boundary_ψ)
 
 function normalize_fluxes!(moc::MoCProblem{T}) where {T}
-
-    @unpack mesh = moc.trackgenerator
+    @unpack groups, nfsr, φ, materials, cell_tag, tag_to_idx = moc
 
     total_fission_source = zero(T)
+    for i in 1:nfsr
 
-    for i in 1:moc.nfsr
+        # dada una cell id, encuentro el tag de Gridap
+        tag = cell_tag[i]
 
-        #! no existe esto aun
-        #! dada una cell tenemos que conseguir el material, i.e. las secciones eficaces
-        cell = mesh.cells[i]
-        material = cell.material
+        # dado un tag de Gridap, busco el idx de NeutronTransport
+        idx = tag_to_idx[tag]
 
-        # TODO: check if for loop is faster
-        total_fission_source += sum(
-            material.xs.νΣf[g′] * φ[cell.index[g′]] * cell.volume for g′ in 1:moc.groups
-        )
+        # tomo el material
+        material = materials[idx]
 
+        #! lo tengo que crear, quizas calculando los volumes con los tracks... o no
+        volume = cell_volume[i]
+
+        @unpack χ, Σt, νΣf, Σs0 = material
+
+        for g′ in 1:groups
+            ig′ = @region_index(i, g′)
+            total_fission_source += νΣf[g′] * φ[ig′] * volume
+        end
+        # total_fission_source += sum(
+        #     νΣf[g′] * φ[@region_index(i, g′)] * volume for g′ in 1:groups
+        # )
     end
 
-    normalization_factor = 1 / total_fission_source
-    φ .*= normalization_factor
-    φ_prev .*= normalization_factor
-    boundary_ψ .*= normalization_factor
-    start_boundary_ψ .*= normalization_factor
+    # λ is the normalization factor
+    λ = 1 / total_fission_source
+    φ .*= λ
+    φ_prev .*= λ
+    boundary_ψ .*= λ
+    start_boundary_ψ .*= λ
 
     return nothing
 end
 
-function compute_q!(moc::MoCProblem{T}) where {T}
-    @unpack groups, materials, cells_tag, tag_to_idx = moc
+function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
+    @unpack groups, nfsr, φ, reduced_souce, materials, cell_tag, tag_to_idx = moc
 
-    for i in 1:moc.nfsr
+    for i in 1:nfsr
 
         # dada una cell id, encuentro el tag de Gridap
-        tag = moc.cells_tag[i]
+        tag = cell_tag[i]
 
         # dado un tag de Gridap, busco el idx de NeutronTransport
-        idx = moc.tag_to_idx[tag]
+        idx = tag_to_idx[tag]
 
         # tomo el material
-        material = moc.materials[idx]
+        material = materials[idx]
 
         @unpack χ, Σt, νΣf, Σs0 = material
 
         for g in 1:groups
-
-            #! use view instead
-            reduced_source[cell.index[g]] = zero(T)
-
+            ig = @region_index(i, g)
+            qig = zero(T)
             for g′ in 1:groups
-                reduced_source[cell.index[g]] += Σs0[g′][g] * φ[cell.index[g_prime]]
-                reduced_source[cell.index[g]] += 1 / keff * χ[g] * material.xs.νΣf[g′] * φ[cell.index[g_prime]]
+                ig′ = @region_index(i, g′)
+                qig += Σs0[g′, g] * φ[ig′]
+                qig += 1 / keff * χ[g] * νΣf[g′] * φ[ig′]
             end
+            # qig = sum(
+            #     Σs0[g′, g] * φ[@region_index(i, g′)] +
+            #     1 / keff * χ[g] * νΣf[g′] * φ[@region_index(i, g′)]
+            #     for g′ in 1:groups
+            # )
 
-            #! aca se computa Σtotal, en realidad ya lo deberia hacer en el constructor
-
-            reduced_source[cell.index[g]] /= (4 * π * Σt[g])
+            qig /= (4 * π * Σt[g])
+            reduced_souce[ig] = qig
         end
-
     end
 
     return nothing
