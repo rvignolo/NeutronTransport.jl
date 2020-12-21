@@ -1,7 +1,10 @@
 using NeutronTransport
 using Documenter
+using DocumenterCitations
 
-makedocs(;
+bib = CitationBibliography(joinpath(@__DIR__, "bibliography.bib"))
+
+makedocs(bib;
     modules=[NeutronTransport],
     authors="Ramiro Vignolo <ramirovignolo@gmail.com>",
     repo="https://github.com/rvignolo/NeutronTransport.jl/blob/{commit}{path}#L{line}",
@@ -12,7 +15,9 @@ makedocs(;
         assets=String[],
     ),
     pages=[
-        "Home" => "index.md",
+        "Introduction" => "index.md",
+        "Method of Characteristics" => "moc.md",
+        "References" => "references.md"
     ],
 )
 
