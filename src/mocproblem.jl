@@ -10,10 +10,10 @@ struct MoCProblem{T<:Real,G<:TrackGenerator,Q<:Quadrature,M}
 
     # scalar flux
     nφ::Int
-    φ::Vector{T} # me parece que algo de Gridap va a ser mejor
+    φ::Vector{T}
     φ_prev::Vector{T}
 
-    reduced_source::Vector{T}
+    q::Vector{T}  # reduced source
 
     # angular flux
     nψ::Int
@@ -46,7 +46,7 @@ function MoCProblem(
     T = promote_type(T1, T2)
     φ = Vector{T}(undef, nφ)
     φ_prev = Vector{T}(undef, nφ)
-    reduced_source = Vector{T}(undef, nφ)
+    q = Vector{T}(undef, nφ)
     boundary_ψ = Vector{T}(undef, nψ)
     start_boundary_ψ = Vector{T}(undef, nψ)
 
@@ -60,9 +60,9 @@ function MoCProblem(
     # me van a quedar sin definir las posiciones q no correspondan a materiales...
     for (i, pair) in enumerate(materials)
         key, value = pair
-        # dado un name mio, busco su idx en gridap
-        gridap_idx = findfirst(x -> isequal(x, key), tag_to_name)
-        tag_to_idx[gridap_idx] = i
+        # dado un name mio, busco su tag en gridap
+        gridap_tag = get_tag_from_name(key)
+        tag_to_idx[gridap_tag] = i
     end
 
     # mmm. no necesito que sea named tuple ya que todos los types son iguales y puedo ir a
@@ -71,7 +71,7 @@ function MoCProblem(
     materials_v = [values(materials)...]
 
     return MoCProblem(
-        dimension, groups, nfsr, max_iter, max_residual, nφ, φ, φ_prev, reduced_source, nψ,
+        dimension, groups, nfsr, max_iter, max_residual, nφ, φ, φ_prev, q, nψ,
         boundary_ψ, start_boundary_ψ, tg, quadrature, materials_v, cell_tag, tag_to_idx
     )
 end
@@ -107,8 +107,8 @@ function _solve_eigenvalue_problem(moc::MoCProblem{T}) where {T<:Real}
         normalize_fluxes!(moc)
         compute_q!(moc, keff)
         compute_φ!(moc)
-        keff = multiplication_factor(moc) #! ojo este se debe usar en calculos!
-        ϵ = residual(moc)
+        keff = multiplication_factor(moc, keff)
+        ϵ = residual(moc, keff)
         update_prev_φ!(moc)
 
         # we need at least three iterations:
@@ -133,7 +133,23 @@ end
 function normalize_fluxes!(moc::MoCProblem{T}) where {T}
     @unpack groups, nfsr, φ, materials, cell_tag, tag_to_idx = moc
 
-    total_fission_source = zero(T)
+    # total fission source
+    qft = total_fission_source(moc)
+
+    # λ is the normalization factor
+    λ = 1 / qft
+    φ .*= λ
+    φ_prev .*= λ
+    boundary_ψ .*= λ
+    start_boundary_ψ .*= λ
+
+    return nothing
+end
+
+function total_fission_source(moc::MoCProblem)
+    @unpack groups, nfsr, φ, materials, cell_tag, tag_to_idx = moc
+
+    qft = zero(T)
     for i in 1:nfsr
 
         # dada una cell id, encuentro el tag de Gridap
@@ -148,29 +164,22 @@ function normalize_fluxes!(moc::MoCProblem{T}) where {T}
         #! lo tengo que crear, quizas calculando los volumes con los tracks... o no
         volume = cell_volume[i]
 
-        @unpack χ, Σt, νΣf, Σs0 = material
+        @unpack νΣf = material
 
         for g′ in 1:groups
             ig′ = @region_index(i, g′)
-            total_fission_source += νΣf[g′] * φ[ig′] * volume
+            qft += νΣf[g′] * φ[ig′] * volume
         end
-        # total_fission_source += sum(
+        # qft += sum(
         #     νΣf[g′] * φ[@region_index(i, g′)] * volume for g′ in 1:groups
         # )
     end
 
-    # λ is the normalization factor
-    λ = 1 / total_fission_source
-    φ .*= λ
-    φ_prev .*= λ
-    boundary_ψ .*= λ
-    start_boundary_ψ .*= λ
-
-    return nothing
+    return qft
 end
 
 function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
-    @unpack groups, nfsr, φ, reduced_souce, materials, cell_tag, tag_to_idx = moc
+    @unpack groups, nfsr, φ, q, materials, cell_tag, tag_to_idx = moc
 
     for i in 1:nfsr
 
@@ -200,11 +209,67 @@ function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
             # )
 
             qig /= (4 * π * Σt[g])
-            reduced_souce[ig] = qig
+            q[ig] = qig
         end
     end
 
     return nothing
 end
 
-function compute_φ(moc::MoCProblem) end
+function compute_φ!(moc::MoCProblem) end
+
+multiplication_factor(moc::MoCProblem, keff::Real) = total_fission_source(moc) * keff
+
+function residual(moc::MoCProblem{T}, keff::Real) where {T}
+    @unpack nfsr, groups, φ, φ_prev = moc
+
+    # calculamos la fuente total (integrada en energia g) para cada celda i (fuente new y
+    # old). Podriamos almacenar la new y dejarla como old para la siguiente pasada...
+
+    ϵ = zero(T)
+    for i in 1:nfsr
+
+        # dada una cell id, encuentro el tag de Gridap
+        tag = cell_tag[i]
+
+        # dado un tag de Gridap, busco el idx de NeutronTransport
+        idx = tag_to_idx[tag]
+
+        # tomo el material
+        material = materials[idx]
+
+        new_qi = zero(T)
+        old_qi = zero(T)
+
+        @unpack νΣf, Σs0 = material
+
+        # total fission source in each region (χ sum 1 when ∫ in g)
+        for g′ in 1:groups
+            ig′ = @region_index(i, g′)
+            νΣfg′ = νΣf[g′]
+            new_qi += νΣfg′ * φ[ig′]
+            old_qi += νΣfg′ * φ_prev[ig′]
+        end
+        # new_qi = sum(νΣf[g′] * φ[ig′] for g′ in 1:groups)
+        # old_qi = sum(νΣf[g′] * φ_pre[ig′] for g′ in 1:groups)
+
+        new_qi /= keff
+        old_qi /= keff
+
+        # total scattering source
+        for g in 1:groups, g′ in 1:groups
+            ig′ = @region_index(i, g′)
+            Σsgg′ = Σs0[g′, g]
+            old_qi += Σsgg′ * φ[ig′]
+            new_qi += Σsgg′ * φ_prev[ig′]
+        end
+
+        if old_qi > 0
+            ϵ += ((new_qi - old_qi) / old_qi)^2
+        end
+    end
+
+    ϵ = sqrt(ϵ / nfsr)
+
+    return ϵ
+end

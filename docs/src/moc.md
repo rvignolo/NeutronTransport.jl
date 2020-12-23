@@ -104,3 +104,7 @@ for eigenvalue problems (without external sources). Additionally, when consideri
 ```
 
 Consequently, even though the ODE may be integrated to find a solution, an iterative scheme over the source term must be used to converge to the true solution. Commonly, each of these iterations is known as a *transport sweep*.
+
+## Discretization scheme
+
+In order to find a numerical solution to the transport equation we must transform the continuous operators and dependencies into discrete versions. Up to this point we have only applied a discretization scheme to the energy dependence. We now apply a discretization scheme to the other continuous dependencies: solid angle ``\boldsymbol{\hat{\Omega}}`` and spatial variables.

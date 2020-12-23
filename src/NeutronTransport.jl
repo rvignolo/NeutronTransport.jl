@@ -7,7 +7,7 @@ using StaticArrays
 using RayTracing
 using RayTracing: TrackGenerator, AzimuthalQuadrature, num_dims, num_cells
 using Gridap: get_face_labeling
-using Gridap.Geometry: get_face_tag
+using Gridap.Geometry: get_face_tag, get_tag_from_name
 
 include("formulation.jl")
 include("materials.jl")
