@@ -1,6 +1,6 @@
 
 struct MoCProblem{T<:Real,G<:TrackGenerator,Q<:Quadrature,M}
-    # as part of the type?
+    # TODO: as part of the type? si
     dimension::Int
     groups::Int
     nfsr::Int
@@ -32,16 +32,16 @@ end
 # los materiales tienen las mismas dimensiones, puedo usar vectores de structs y tener un
 # type defindo...). Ver si NamedTuples.jl tiene el constructor de named tuple a partir de dict.
 function MoCProblem(
-    tg::TrackGenerator{M,Q,T1}, pq::PolarQuadrature{N,T2}, materials::P;
+    tg::TrackGenerator{T1}, pq::PolarQuadrature{N,T2}, materials::P;
     max_iter::Int=1000, max_residual::Real=1e-7
-) where {M,Q,T1,N,T2,P}
+) where {T1,N,T2,P}
     @unpack mesh, azimuthal_quadrature, n_total_tracks = tg
 
     dimension = num_dims(mesh)
-    groups = 2 # from materials? sip.
+    groups = ngroups.(values(materials))[1] # TODO: check all equal
     nfsr = num_cells(mesh)
     nφ = nfsr * groups
-    nψ = n_total_tracks * npolar(pq) * groups
+    nψ = n_total_tracks * 2 * npolar2(pq) * groups
 
     T = promote_type(T1, T2)
     φ = Vector{T}(undef, nφ)
@@ -61,7 +61,7 @@ function MoCProblem(
     for (i, pair) in enumerate(materials)
         key, value = pair
         # dado un name mio, busco su tag en gridap
-        gridap_tag = get_tag_from_name(key)
+        gridap_tag = get_tag_from_name(face_labeling, key)
         tag_to_idx[gridap_tag] = i
     end
 
@@ -84,7 +84,7 @@ end
 # si quiero que esten intercalados
 macro region_index(i, g)
     ex = quote
-        (i - 1) * groups + g
+        ($i - 1) * groups + $g
     end
     return esc(ex)
 end
@@ -92,14 +92,14 @@ end
 
 macro angular_index(t, d, p, g)
     ex = quote
-        (t - 1) * 2 * n_polar_2 * groups + (d - 1) * n_polar_2 * groups + (p - 1) * groups + g
+        ($t - 1) * 2 * n_polar_2 * groups + $d * n_polar_2 * groups + ($p - 1) * groups + $g
     end
     return esc(ex)
 end
 
 macro reduced_angular_index(p, g)
     ex = quote
-        (p - 1) * groups + g
+        ($p - 1) * groups + $g
     end
     return esc(ex)
 end
@@ -143,8 +143,8 @@ end
 @inline update_prev_φ!(moc::MoCProblem) = copy!(moc.φ_prev, moc.φ)
 @inline update_boundary_ψ!(moc::MoCProblem) = copy!(moc.boundary_ψ, moc.start_boundary_ψ)
 
-function normalize_fluxes!(moc::MoCProblem{T}) where {T}
-    @unpack groups, nfsr, φ, materials, cell_tag, tag_to_idx = moc
+function normalize_fluxes!(moc::MoCProblem)
+    @unpack φ, φ_prev, boundary_ψ, start_boundary_ψ = moc
 
     # total fission source
     qft = total_fission_source(moc)
@@ -159,8 +159,9 @@ function normalize_fluxes!(moc::MoCProblem{T}) where {T}
     return nothing
 end
 
-function total_fission_source(moc::MoCProblem)
-    @unpack groups, nfsr, φ, materials, cell_tag, tag_to_idx = moc
+function total_fission_source(moc::MoCProblem{T}) where {T}
+    @unpack groups, nfsr, φ, trackgenerator, materials, cell_tag, tag_to_idx = moc
+    @unpack volumes = trackgenerator
 
     qft = zero(T)
     for i in 1:nfsr
@@ -174,17 +175,14 @@ function total_fission_source(moc::MoCProblem)
         # tomo el material
         material = materials[idx]
 
-        #! lo tengo que crear, quizas calculando los volumes con los tracks... o no
-        volume = cell_volume[i]
-
         @unpack νΣf = material
 
         for g′ in 1:groups
             ig′ = @region_index(i, g′)
-            qft += νΣf[g′] * φ[ig′] * volume
+            qft += νΣf[g′] * φ[ig′] * volumes[i]
         end
         # qft += sum(
-        #     νΣf[g′] * φ[@region_index(i, g′)] * volume for g′ in 1:groups
+        #     νΣf[g′] * φ[@region_index(i, g′)] * volumes[i] for g′ in 1:groups
         # )
     end
 
@@ -229,56 +227,122 @@ function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
     return nothing
 end
 
-
-
+# ! TODO: ver donde alloca y ver si las de adentro son type stable
 function compute_φ!(moc::MoCProblem{T}) where {T}
+    @unpack groups, φ, q, trackgenerator, quadrature = moc
+    @unpack tracks_by_uid = trackgenerator
+
+    n_polar_2 = npolar2(quadrature.polar)
 
     set_uniform_φ!(moc, zero(T))
     update_boundary_ψ!(moc)
 
-    for (t, track) in enumerate(trackgenerator.tracks)
-        a = @angular_index(t, 0, 0, 0)
-        b = a + groups * n_polar_2
+    for track in tracks_by_uid
+        uid = RayTracing.universal_id(track)
+
+        a = @angular_index(uid, Int32(RayTracing.Forward), 1, 1)
+        b = a + groups * n_polar_2 - 1
         boundary_ψ = @view moc.boundary_ψ[a:b]
         for segment in track.segments
-            tally_φ!(moc, segment, boundary_ψ, i) # en lugar de i mandar track y ese tiene el uid que es t y el azim index, entonces el @view lo hago en tally? ah pero abajo lo necesito de nuevo al @view en set_start_boundary_ψ
+            tally_φ!(moc, track, segment, boundary_ψ)
         end
 
-        # TODO: transferir los flujos angulares fwd al track correspondiente
-        set_start_boundary_ψ(moc, )
+        set_start_boundary_ψ!(moc, track, boundary_ψ, RayTracing.Forward)
 
-        a = @angular_index(t, 1, 0, 0)
-        b = a + groups * n_polar_2
+        a = @angular_index(uid, Int32(RayTracing.Backward), 1, 1)
+        b = a + groups * n_polar_2 - 1
         boundary_ψ = @view moc.boundary_ψ[a:b]
         for segment in reverse!(track.segments)
-            tally_φ!(moc, segment, boundary_ψ, i) # en lugar de i mandar track y ese tiene el uid que es t y el azim index, entonces el @view lo hago en tally? ah pero abajo lo necesito de nuevo al @view
+            tally_φ!(moc, track, segment, boundary_ψ)
         end
 
+        # reorder
         reverse!(track.segments)
 
+        set_start_boundary_ψ!(moc, track, boundary_ψ, RayTracing.Backward)
     end
 
+    add_q_to_φ!(moc)
+
+    return nothing
 end
 
+function tally_φ!(moc, track, segment, boundary_ψ)
+    @unpack groups, φ, q, quadrature = moc
 
-function tally_φ!(moc, segment, boundary_ψ, azim_idx)
-    for g in 1:groups
-        for p in 1:n_polar_2
-            exponential = 1. # TODO
-            pg = @reduced_angular_index(p, g)
-            ig = @region_index(segment.element, g) # element deberia llamarse cell_id?
-            Δψ = (boundary_ψ[pg] - moc.q[ig]) * exponential
-            φ[ig] += 2 * moc.quadrature.ω[azim_idx, p] * Δψ
-            boundary_ψ[pg] -= Δψ
+    n_polar_2 = npolar2(quadrature.polar)
+
+    # TODO: ver cual orden es mas rapido, si `g` o `p` primero, seguro es p primero y g despues
+    for g in 1:groups, p in 1:n_polar_2
+        exponential = 1. # TODO
+        pg = @reduced_angular_index(p, g)
+        ig = @region_index(segment.element, g) #! no creo que element sea igual al id bien que va con 1:nfsr
+        Δψ = (boundary_ψ[pg] - q[ig]) * exponential
+        φ[ig] += 2 * quadrature.ω[track.azim_idx, p] * Δψ
+        boundary_ψ[pg] -= Δψ
+    end
+
+    return nothing
+end
+
+function set_start_boundary_ψ!(moc, current_track, boundary_ψ, dir)
+    @unpack groups, start_boundary_ψ, quadrature = moc
+
+    n_polar_2 = npolar2(quadrature.polar)
+
+    if dir == RayTracing.Forward
+        next_track = current_track.next_track_fwd
+        next_track_dir = RayTracing.dir_next_track_fwd(current_track)
+        flag = !isequal(RayTracing.boundary_out(next_track), RayTracing.Vaccum)
+    elseif dir == RayTracing.Backward
+        next_track = current_track.next_track_bwd
+        next_track_dir = RayTracing.dir_next_track_bwd(current_track)
+        flag = !isequal(RayTracing.boundary_in(next_track), RayTracing.Vaccum)
+    end
+
+    next_track_uid = RayTracing.universal_id(next_track)
+
+    # TODO: ver cual orden es mas rapido, si `g` o `p` primero
+    for p in 1:n_polar_2, g in 1:groups
+        tdpg = @angular_index(next_track_uid, Int32(next_track_dir), p, g)
+        pg = @reduced_angular_index(p, g)
+        start_boundary_ψ[tdpg] = boundary_ψ[pg] * flag
+    end
+
+    return nothing
+end
+
+function add_q_to_φ!(moc)
+    @unpack groups, nfsr, φ, q, trackgenerator, materials, cell_tag, tag_to_idx = moc
+    @unpack volumes = trackgenerator
+
+    for i in 1:nfsr
+
+        # dada una cell id `i`, encuentro el tag de Gridap
+        tag = cell_tag[i]
+
+        # dado un tag de Gridap, busco el idx de NeutronTransport
+        idx = tag_to_idx[tag]
+
+        # tomo el material
+        material = materials[idx]
+
+        @unpack Σt = material
+
+        for g in 1:groups
+            ig = @region_index(i, g)
+            φ[ig] /= (Σt[g] * volumes[i])
+            φ[ig] += 4π * q[ig]
         end
     end
+
     return nothing
 end
 
 multiplication_factor(moc::MoCProblem, keff::Real) = total_fission_source(moc) * keff
 
 function residual(moc::MoCProblem{T}, keff::Real) where {T}
-    @unpack nfsr, groups, φ, φ_prev = moc
+    @unpack nfsr, groups, φ, φ_prev, materials, cell_tag, tag_to_idx = moc
 
     # calculamos la fuente total (integrada en energia g) para cada celda i (fuente new y
     # old). Podriamos almacenar la new y dejarla como old para la siguiente pasada...

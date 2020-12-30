@@ -7,7 +7,7 @@ Holds information regarding polar parameters, such as the polar angles and the p
 weights.
 """
 struct PolarQuadrature{N,T<:Real}
-    sinθs::Vector{T} # SVector{N,T} como type
+    sinθs::Vector{T} # TODO: SVector{N,T} como type
     θs::Vector{T}
     ωₚ::Vector{T}
 end

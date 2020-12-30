@@ -13,6 +13,8 @@ struct CrossSections{G,T1<:Union{Vector{T},SVector{G,T}} where T,
     Σs1::T2
 end
 
+ngroups(::CrossSections{G}) where {G} = G
+
 function CrossSections(g::Int64,
     T=Float64;
     D=zeros(T, g), S=zeros(T, g), χ=nothing, Σt=zeros(T, g), Σa=zeros(T, g),
