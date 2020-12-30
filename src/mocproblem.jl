@@ -83,12 +83,25 @@ end
 
 # si quiero que esten intercalados
 macro region_index(i, g)
-    return esc(:((i - 1) * groups + g))
+    ex = quote
+        (i - 1) * groups + g
+    end
+    return esc(ex)
 end
 # puedo hacerlas como function con @inline pero necesitan `groups` o `nfsr`
 
 macro angular_index(t, d, p, g)
-    return esc(:(t * 2 * n_polar_2 * groups + d * n_polar_2 * groups + p * groups + g))
+    ex = quote
+        (t - 1) * 2 * n_polar_2 * groups + (d - 1) * n_polar_2 * groups + (p - 1) * groups + g
+    end
+    return esc(ex)
+end
+
+macro reduced_angular_index(p, g)
+    ex = quote
+        (p - 1) * groups + g
+    end
+    return esc(ex)
 end
 
 solve(moc::MoCProblem) = _solve_eigenvalue_problem(moc)
@@ -183,7 +196,7 @@ function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
 
     for i in 1:nfsr
 
-        # dada una cell id, encuentro el tag de Gridap
+        # dada una cell id `i`, encuentro el tag de Gridap
         tag = cell_tag[i]
 
         # dado un tag de Gridap, busco el idx de NeutronTransport
@@ -216,7 +229,51 @@ function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
     return nothing
 end
 
-function compute_φ!(moc::MoCProblem) end
+
+
+function compute_φ!(moc::MoCProblem{T}) where {T}
+
+    set_uniform_φ!(moc, zero(T))
+    update_boundary_ψ!(moc)
+
+    for (t, track) in enumerate(trackgenerator.tracks)
+        a = @angular_index(t, 0, 0, 0)
+        b = a + groups * n_polar_2
+        boundary_ψ = @view moc.boundary_ψ[a:b]
+        for segment in track.segments
+            tally_φ!(moc, segment, boundary_ψ, i) # en lugar de i mandar track y ese tiene el uid que es t y el azim index, entonces el @view lo hago en tally? ah pero abajo lo necesito de nuevo al @view en set_start_boundary_ψ
+        end
+
+        # TODO: transferir los flujos angulares fwd al track correspondiente
+        set_start_boundary_ψ(moc, )
+
+        a = @angular_index(t, 1, 0, 0)
+        b = a + groups * n_polar_2
+        boundary_ψ = @view moc.boundary_ψ[a:b]
+        for segment in reverse!(track.segments)
+            tally_φ!(moc, segment, boundary_ψ, i) # en lugar de i mandar track y ese tiene el uid que es t y el azim index, entonces el @view lo hago en tally? ah pero abajo lo necesito de nuevo al @view
+        end
+
+        reverse!(track.segments)
+
+    end
+
+end
+
+
+function tally_φ!(moc, segment, boundary_ψ, azim_idx)
+    for g in 1:groups
+        for p in 1:n_polar_2
+            exponential = 1. # TODO
+            pg = @reduced_angular_index(p, g)
+            ig = @region_index(segment.element, g) # element deberia llamarse cell_id?
+            Δψ = (boundary_ψ[pg] - moc.q[ig]) * exponential
+            φ[ig] += 2 * moc.quadrature.ω[azim_idx, p] * Δψ
+            boundary_ψ[pg] -= Δψ
+        end
+    end
+    return nothing
+end
 
 multiplication_factor(moc::MoCProblem, keff::Real) = total_fission_source(moc) * keff
 

@@ -18,7 +18,7 @@ function Quadrature(azimuthal::AzimuthalQuadrature{T}, polar::PolarQuadrature{N,
     ω = Matrix{T}(undef, n_azim_2, n_polar_2) # we have polar symmetry
 
     for i in RayTracing.both_dir(azimuthal), j in 1:n_polar_2
-        ω[i, j] = 4 * π * ωₐ[i] * ωₚ[j] * δs[i] * sinθs[j]
+        ω[i, j] = 4π * ωₐ[i] * ωₚ[j] * δs[i] * sinθs[j]
     end
     # ω .*= 4π
 

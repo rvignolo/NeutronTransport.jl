@@ -23,7 +23,7 @@ segmentize!(tg)
 # polar quadrature
 pq = TabuchiYamamoto(6)
 
-# materials: Should we add them to the geometry? I don't think so.
+# materials
 pin = CrossSections(2;
     νΣf = [1.86278e-2, 3.44137e-1],
     Σt  = [3.62022e-1, 5.72155e-1],
