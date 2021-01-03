@@ -13,7 +13,8 @@ struct MoCProblem{T<:Real,G<:TrackGenerator,Q<:Quadrature,M}
     φ::Vector{T}
     φ_prev::Vector{T}
 
-    q::Vector{T}  # reduced source
+    # reduced source
+    q::Vector{T}
 
     # angular flux
     nψ::Int
@@ -108,6 +109,8 @@ solve(moc::MoCProblem) = _solve_eigenvalue_problem(moc)
 
 function _solve_eigenvalue_problem(moc::MoCProblem{T}) where {T<:Real}
 
+    optical_length!(moc)
+
     keff = one(T)
     set_uniform_φ!(moc, one(T))
     update_prev_φ!(moc)
@@ -136,6 +139,44 @@ function _solve_eigenvalue_problem(moc::MoCProblem{T}) where {T<:Real}
         iter += 1
     end
 
+end
+
+function optical_length!(moc)
+    @unpack trackgenerator = moc
+    @unpack tracks_by_uid = trackgenerator
+
+    for track in tracks_by_uid
+        _optical_length!(moc, track)
+    end
+
+    return nothing
+end
+
+function _optical_length!(moc, track)
+    @unpack groups, materials, cell_tag, tag_to_idx = moc
+
+    for segment in track.segments
+        @unpack ℓ, τ = segment
+        resize!(τ, groups)
+
+        #! no creo que element sea igual al id bien que va con 1:nfsr
+        i = segment.element
+
+        # dada una cell id, encuentro el tag de Gridap
+        tag = cell_tag[i]
+
+        # dado un tag de Gridap, busco el idx de NeutronTransport
+        idx = tag_to_idx[tag]
+
+        # tomo el material
+        material = materials[idx]
+
+        @unpack Σt = material
+
+        for g in 1:groups
+            τ[g] = Σt[g] * ℓ
+        end
+    end
 end
 
 @inline set_uniform_φ!(moc::MoCProblem, φ::Real) = fill!(moc.φ, φ)
@@ -219,7 +260,7 @@ function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
             #     for g′ in 1:groups
             # )
 
-            qig /= (4 * π * Σt[g])
+            qig /= (4π * Σt[g])
             q[ig] = qig
         end
     end
@@ -227,7 +268,6 @@ function compute_q!(moc::MoCProblem{T}, keff::Real) where {T}
     return nothing
 end
 
-# ! TODO: ver donde alloca y ver si las de adentro son type stable
 function compute_φ!(moc::MoCProblem{T}) where {T}
     @unpack groups, φ, q, trackgenerator, quadrature = moc
     @unpack tracks_by_uid = trackgenerator
@@ -238,28 +278,8 @@ function compute_φ!(moc::MoCProblem{T}) where {T}
     update_boundary_ψ!(moc)
 
     for track in tracks_by_uid
-        uid = RayTracing.universal_id(track)
-
-        a = @angular_index(uid, Int32(RayTracing.Forward), 1, 1)
-        b = a + groups * n_polar_2 - 1
-        boundary_ψ = @view moc.boundary_ψ[a:b]
-        for segment in track.segments
-            tally_φ!(moc, track, segment, boundary_ψ)
-        end
-
-        set_start_boundary_ψ!(moc, track, boundary_ψ, RayTracing.Forward)
-
-        a = @angular_index(uid, Int32(RayTracing.Backward), 1, 1)
-        b = a + groups * n_polar_2 - 1
-        boundary_ψ = @view moc.boundary_ψ[a:b]
-        for segment in reverse!(track.segments)
-            tally_φ!(moc, track, segment, boundary_ψ)
-        end
-
-        # reorder
-        reverse!(track.segments)
-
-        set_start_boundary_ψ!(moc, track, boundary_ψ, RayTracing.Backward)
+        tally(moc, track, RayTracing.Forward)
+        tally(moc, track, RayTracing.Backward)
     end
 
     add_q_to_φ!(moc)
@@ -267,25 +287,56 @@ function compute_φ!(moc::MoCProblem{T}) where {T}
     return nothing
 end
 
-function tally_φ!(moc, track, segment, boundary_ψ)
+function tally(moc, track, dir)
     @unpack groups, φ, q, quadrature = moc
 
     n_polar_2 = npolar2(quadrature.polar)
 
-    # TODO: ver cual orden es mas rapido, si `g` o `p` primero, seguro es p primero y g despues
-    for g in 1:groups, p in 1:n_polar_2
-        exponential = 1. # TODO
+    t = RayTracing.universal_id(track)
+    d = Int32(dir)
+
+    i = @angular_index(t, d, 1, 1)
+    j = i + groups * n_polar_2 - 1
+    boundary_ψ = @view moc.boundary_ψ[i:j]
+
+    segments = dir == RayTracing.Forward ? track.segments : reverse!(track.segments)
+
+    for segment in segments
+        tally_φ!(moc, track, segment, boundary_ψ)
+    end
+
+    set_start_boundary_ψ!(moc, track, boundary_ψ, dir)
+
+    if dir == RayTracing.Backward
+        reverse!(track.segments)
+    end
+
+    return nothing
+end
+
+function tally_φ!(moc, track, segment, boundary_ψ)
+    @unpack groups, φ, q, quadrature = moc
+    @unpack polar, sinθs, ω = quadrature
+    @unpack τ = segment
+
+    #! no creo que element sea igual al id bien que va con 1:nfsr
+    i = segment.element
+    a = track.azim_idx
+    n_polar_2 = npolar2(polar)
+
+    # TODO: es este el mejor orden posible?
+    for p in 1:n_polar_2, g in 1:groups
         pg = @reduced_angular_index(p, g)
-        ig = @region_index(segment.element, g) #! no creo que element sea igual al id bien que va con 1:nfsr
-        Δψ = (boundary_ψ[pg] - q[ig]) * exponential
-        φ[ig] += 2 * quadrature.ω[track.azim_idx, p] * Δψ
+        ig = @region_index(i, g)
+        Δψ = (boundary_ψ[pg] - q[ig]) * (1 - exp(-τ[g] / sinθs[p]))
+        φ[ig] += 2 * ω[a, p] * Δψ
         boundary_ψ[pg] -= Δψ
     end
 
     return nothing
 end
 
-function set_start_boundary_ψ!(moc, current_track, boundary_ψ, dir)
+function set_start_boundary_ψ!(moc::MoCProblem{T}, current_track, boundary_ψ, dir) where {T}
     @unpack groups, start_boundary_ψ, quadrature = moc
 
     n_polar_2 = npolar2(quadrature.polar)
@@ -300,13 +351,14 @@ function set_start_boundary_ψ!(moc, current_track, boundary_ψ, dir)
         flag = !isequal(RayTracing.boundary_in(next_track), RayTracing.Vaccum)
     end
 
-    next_track_uid = RayTracing.universal_id(next_track)
+    t = RayTracing.universal_id(next_track)
+    d = Int32(next_track_dir)
 
-    # TODO: ver cual orden es mas rapido, si `g` o `p` primero
+    # TODO: es este el mejor orden posible?
     for p in 1:n_polar_2, g in 1:groups
-        tdpg = @angular_index(next_track_uid, Int32(next_track_dir), p, g)
+        tdpg = @angular_index(t, d, p, g)
         pg = @reduced_angular_index(p, g)
-        start_boundary_ψ[tdpg] = boundary_ψ[pg] * flag
+        start_boundary_ψ[tdpg] = flag ? boundary_ψ[pg] : zero(T)
     end
 
     return nothing
