@@ -132,9 +132,11 @@ function _solve_eigenvalue_problem(moc::MoCProblem{T}) where {T<:Real}
         #  1. we can compute a residual but it is not correct (previous iteration is fruit)
         #  2. now we can compute a correct residual
 
-        if iter > 1 && isless(residual, moc.max_residual)
+        if iter > 1 && isless(ϵ, moc.max_residual)
             break
         end
+
+        @show ϵ
 
         iter += 1
     end
@@ -316,7 +318,8 @@ end
 
 function tally_φ!(moc, track, segment, boundary_ψ)
     @unpack groups, φ, q, quadrature = moc
-    @unpack polar, sinθs, ω = quadrature
+    @unpack polar, ω = quadrature
+    @unpack sinθs = polar
     @unpack τ = segment
 
     #! no creo que element sea igual al id bien que va con 1:nfsr
