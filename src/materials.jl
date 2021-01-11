@@ -27,7 +27,7 @@ function CrossSections(g::Int64,
     T2 = typeof(Σs0)
     if isnothing(χ)
         χ = zeros(T, g)
-        χ[end] = one(T)
+        χ[1] = one(T)
     else
         if !isone(sum(χ))
             error("χ no suma 1.")

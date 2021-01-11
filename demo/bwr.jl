@@ -2,14 +2,14 @@ using Gridap
 using RayTracing
 using NeutronTransport
 
-jsonfile = joinpath(@__DIR__,"pincell.json")
+jsonfile = joinpath(@__DIR__,"bwr.json")
 geometry = DiscreteModelFromFile(jsonfile)
 
 # number of azimuthal angles
-nφ = 32
+nφ = 16
 
 # azimuthal spacing
-δ = 0.005
+δ = 0.01
 
 # boundary conditions
 bcs = BoundaryConditions(top=Reflective, bottom=Reflective, left=Reflective, right=Reflective)
@@ -45,33 +45,39 @@ water = CrossSections(2;
     Σs0 = [6.07382e-1 3.31316e-2; 0.0e-0 1.68428e-0]
 )
 
-materials = Dict("pin" => pin, "cladding" => cladding, "water" => water)
+pin_gd = CrossSections(2;
+    νΣf = [1.79336e-2, 1.57929e-1],
+    Σt  = [3.71785e-1, 1.75000e-0],
+    Σs0 = [3.38096e-1  6.92807e-4; 0.0e-0 3.83204e-1]
+)
+
+materials = Dict("pin" => pin, "cladding" => cladding, "water" => water, "pin-gd" => pin_gd)
 
 # define the problem
 prob = MoCProblem(tg, pq, materials)
 
 # solve
-sol = NeutronTransport.solve(prob)
+sol = solve(prob)
 
 
-φ1 = Vector{Float64}(undef, Int64(length(prob.φ)/2));
+φ1 = Vector{Float64}(undef, Int64(length(sol.φ)/2));
 j = 0
-for i in 1:length(prob.φ)
+for i in 1:length(sol.φ)
     if isodd(i)
         j += 1
-        φ1[j] = prob.φ[i]
+        φ1[j] = sol.φ[i]
     end
 end
 
-φ2 = Vector{Float64}(undef, Int64(length(prob.φ)/2));
+φ2 = Vector{Float64}(undef, Int64(length(sol.φ)/2));
 j = 0
-for i in 1:length(prob.φ)
+for i in 1:length(sol.φ)
     if iseven(i)
         j += 1
-        φ2[j] = prob.φ[i]
+        φ2[j] = sol.φ[i]
     end
 end
 
 trian = Gridap.Geometry.get_triangulation(tg.mesh.model)
 
-writevtk(trian, "fluxes-pincell", cellfields=["grupo2" => φ2, "grupo1" => φ1])
+writevtk(trian, "fluxes", cellfields=["grupo2" => φ2, "grupo1" => φ1])

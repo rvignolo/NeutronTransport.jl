@@ -1,13 +1,12 @@
-#! IDEA: use `SArray`s instead? idem for AzimuthalQuadrature.
 
 """
-    PolarQuadrature{N<:Int,T<:Real}
+    PolarQuadrature{N,T<:Real}
 
-Holds information regarding polar parameters, such as the polar angles and the polar
-weights.
+Holds information of the polar quadrature, such as the polar angles `θs` and the polar
+weights `ωₚ`.
 """
 struct PolarQuadrature{N,T<:Real}
-    sinθs::Vector{T} # TODO: SVector{N,T} como type
+    sinθs::Vector{T} # TODO: SVector as type!
     θs::Vector{T}
     ωₚ::Vector{T}
 end
@@ -15,9 +14,9 @@ end
 npolar(::PolarQuadrature{N}) where {N} = N
 npolar2(::PolarQuadrature{N}) where {N} = div(N, 2)
 
-for polar_quadrature in (:TabuchiYamamoto, :GaussLegendre, :EqualWeight, :EqualAngle, :Leonard)
+for polar_quad in (:TabuchiYamamoto, :GaussLegendre, :EqualWeight, :EqualAngle, :Leonard)
     @eval begin
-        $polar_quadrature(N::Int, T::Type{<:Real}=Float64) = $polar_quadrature(Val(N), T)
+        $polar_quad(N::Int, T::Type{<:Real}=Float64) = $polar_quad(Val(N), T)
     end
 end
 
