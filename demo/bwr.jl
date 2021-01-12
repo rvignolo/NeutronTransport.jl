@@ -1,6 +1,5 @@
-using Gridap
-using RayTracing
 using NeutronTransport
+using Gridap
 
 jsonfile = joinpath(@__DIR__,"bwr.json")
 geometry = DiscreteModelFromFile(jsonfile)
@@ -58,7 +57,6 @@ prob = MoCProblem(tg, pq, materials)
 
 # solve
 sol = solve(prob)
-
 
 φ1 = Vector{Float64}(undef, Int64(length(sol.φ)/2));
 j = 0

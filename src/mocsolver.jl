@@ -4,7 +4,9 @@ import RayTracing:
     universal_id, dir_next_track_fwd, dir_next_track_bwd, boundary_in, boundary_out
 
 # TODO: Gridap solution object might be useful for interpolation at any point in space...
-struct MoCSolution{T<:Real} <: TransportSolution
+struct MoCSolution{T<:Real,P<:MoCProblem} <: TransportSolution
+    prob::P
+
     keff::T
     residual::T
     iterations::Int
@@ -21,13 +23,26 @@ struct MoCSolution{T<:Real} <: TransportSolution
     start_boundary_ψ::Vector{T}
 end
 
-function MoCSolution{T}(nφ::Int, nψ::Int) where {T}
+function MoCSolution{T}(prob::MoCProblem) where {T}
+    @unpack nφ, nψ = prob
     φ = Vector{T}(undef, nφ)
     φ_prev = Vector{T}(undef, nφ)
     q = Vector{T}(undef, nφ)
     boundary_ψ = Vector{T}(undef, nψ)
     start_boundary_ψ = Vector{T}(undef, nψ)
-    return MoCSolution{T}(zero(T), zero(T), 0, φ, φ_prev, q, boundary_ψ, start_boundary_ψ)
+    return MoCSolution(prob, one(T), zero(T), 0, φ, φ_prev, q, boundary_ψ, start_boundary_ψ)
+end
+
+function (sol::MoCSolution)(i::Int, g::Int)
+    NGroups = ngroups(sol.prob)
+    g in 1:NGroups || throw(DomainError(g, "`g` is outside of domain."))
+    return sol.φ[@region_index(i, g)]
+end
+
+function (sol::MoCSolution)(g::Int)
+    NGroups = ngroups(sol.prob)
+    g in 1:NGroups || throw(DomainError(g, "`g` is outside of domain."))
+    return view(sol.φ, g:NGroups:lastindex(sol.φ))
 end
 
 function solve(prob::MoCProblem; max_iterations::Int=1000, max_residual::Real=1e-7)
@@ -36,7 +51,7 @@ end
 
 function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::T) where {T<:Real}
 
-    sol = MoCSolution{T}(prob.nφ, prob.nψ)
+    sol = MoCSolution{T}(prob)
 
     optical_length!(prob)
 
