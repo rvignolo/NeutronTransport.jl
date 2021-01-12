@@ -1,15 +1,14 @@
-using Gridap
-using RayTracing
 using NeutronTransport
+import Gridap: DiscreteModelFromFile
 
-jsonfile = joinpath(@__DIR__,"pincell.json")
+jsonfile = joinpath(@__DIR__, "pincell.json")
 geometry = DiscreteModelFromFile(jsonfile)
 
 # number of azimuthal angles
 nφ = 32
 
 # azimuthal spacing
-δ = 0.005
+δ = 1e-2
 
 # boundary conditions
 bcs = BoundaryConditions(top=Reflective, bottom=Reflective, left=Reflective, right=Reflective)
@@ -51,27 +50,9 @@ materials = Dict("pin" => pin, "cladding" => cladding, "water" => water)
 prob = MoCProblem(tg, pq, materials)
 
 # solve
-sol = NeutronTransport.solve(prob)
+sol = solve(prob)
 
-
-φ1 = Vector{Float64}(undef, Int64(length(prob.φ)/2));
-j = 0
-for i in 1:length(prob.φ)
-    if isodd(i)
-        j += 1
-        φ1[j] = prob.φ[i]
-    end
-end
-
-φ2 = Vector{Float64}(undef, Int64(length(prob.φ)/2));
-j = 0
-for i in 1:length(prob.φ)
-    if iseven(i)
-        j += 1
-        φ2[j] = prob.φ[i]
-    end
-end
-
-trian = Gridap.Geometry.get_triangulation(tg.mesh.model)
-
-writevtk(trian, "fluxes-pincell", cellfields=["grupo2" => φ2, "grupo1" => φ1])
+import Gridap: writevtk
+import Gridap.Geometry: get_triangulation
+trian = get_triangulation(tg.mesh.model)
+writevtk(trian, "fluxes-pincell3", cellfields=["g1" => sol(1), "g2" => sol(2)])
