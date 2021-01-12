@@ -1,5 +1,5 @@
 using NeutronTransport
-using Gridap
+import Gridap: DiscreteModelFromFile
 
 jsonfile = joinpath(@__DIR__,"bwr.json")
 geometry = DiscreteModelFromFile(jsonfile)
@@ -8,7 +8,7 @@ geometry = DiscreteModelFromFile(jsonfile)
 nφ = 16
 
 # azimuthal spacing
-δ = 0.01
+δ = 1e-2
 
 # boundary conditions
 bcs = BoundaryConditions(top=Reflective, bottom=Reflective, left=Reflective, right=Reflective)
@@ -58,24 +58,7 @@ prob = MoCProblem(tg, pq, materials)
 # solve
 sol = solve(prob)
 
-φ1 = Vector{Float64}(undef, Int64(length(sol.φ)/2));
-j = 0
-for i in 1:length(sol.φ)
-    if isodd(i)
-        j += 1
-        φ1[j] = sol.φ[i]
-    end
-end
-
-φ2 = Vector{Float64}(undef, Int64(length(sol.φ)/2));
-j = 0
-for i in 1:length(sol.φ)
-    if iseven(i)
-        j += 1
-        φ2[j] = sol.φ[i]
-    end
-end
-
-trian = Gridap.Geometry.get_triangulation(tg.mesh.model)
-
-writevtk(trian, "fluxes", cellfields=["grupo2" => φ2, "grupo1" => φ1])
+import Gridap: writevtk
+import Gridap.Geometry: get_triangulation
+trian = get_triangulation(tg.mesh.model)
+writevtk(trian, "bwr-fluxes", cellfields=["g1" => sol(1), "g2" => sol(2)])
