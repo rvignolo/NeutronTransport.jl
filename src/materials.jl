@@ -1,19 +1,22 @@
 # IDEA: We can use lazy_map or map to extend each cross section as a function of position
 
-struct CrossSections{G,T1<:Union{Vector{T},SVector{G,T}} where T,
-    T2<:Union{Matrix{T},SMatrix{G,G,T}} where T}
-    D::T1
-    S::T1
-    χ::T1
-    Σt::T1
-    Σa::T1
-    νΣf::T1
-    eΣf::T1
-    Σs0::T2
-    Σs1::T2
+struct CrossSections{
+    G,T1<:Union{Vector{T},SVector{G,T}} where T,T2<:Union{Matrix{T},SMatrix{G,G,T}} where T
+}
+    D   :: T1
+    S   :: T1
+    χ   :: T1
+    Σt  :: T1
+    Σa  :: T1
+    νΣf :: T1
+    eΣf :: T1
+    Σs0 :: T2
+    Σs1 :: T2
 end
 
 ngroups(::CrossSections{G}) where {G} = G
+
+# function CrossSections{G}(D, S, χ, )
 
 function CrossSections(g::Int64,
     T=Float64;
