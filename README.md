@@ -65,7 +65,7 @@ prob = MoCProblem(tg, pq, materials)
 sol = solve(prob)
 ```
 
-| ![](https://github.com/rvignolo/NeutronTransport.jl/demo/pincell-fast.png)  |  ![](https://github.com/rvignolo/NeutronTransport.jl/demo/pincell-thermal.png) |
+| ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell-fast.png)  |  ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell-thermal.png) |
 |:-------------:|:-------------:|
 | Fast flux | Thermal flux |
 
