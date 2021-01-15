@@ -36,7 +36,7 @@ function MoCProblem(
     n_polar_2 = npolar2(polar_quadrature)
 
     nφ = NRegions * NGroups
-    nψ = n_total_tracks * 2 * n_polar_2 * NGroups
+    nψ = n_total_tracks * 2 * n_polar_2 * NGroups # 2 is the number of directions
 
     T = promote_type(T1, T2)
     φ = Vector{T}(undef, nφ)

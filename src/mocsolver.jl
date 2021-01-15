@@ -1,7 +1,7 @@
 import RayTracing:
     Track, Segment,
     DirectionType, Forward, Backward,
-    universal_id, dir_next_track_fwd, dir_next_track_bwd, boundary_in, boundary_out
+    universal_id, bc_fwd, bc_bwd, dir_next_track_fwd, dir_next_track_bwd
 
 # TODO: Gridap solution object might be useful for interpolation at any point in space...
 struct MoCSolution{T<:Real,P<:MoCProblem} <: TransportSolution
@@ -228,7 +228,7 @@ function compute_φ!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     @unpack tracks_by_uid = trackgenerator
 
     set_uniform_φ!(sol, zero(T))
-    update_boundary_ψ!(sol)
+    update_boundary_ψ!(sol) # update entry ψ for all rays (including d, p and g dependence)
 
     for track in tracks_by_uid
         tally!(sol, prob, track, Forward)
@@ -252,7 +252,7 @@ function tally!(sol::MoCSolution, prob::MoCProblem, track::Track, dir::Direction
 
     i = @angular_index(t, d, 1, 1)
     j = i + NGroups * n_polar_2 - 1
-    boundary_ψ = @view sol.boundary_ψ[i:j]
+    boundary_ψ = @view sol.boundary_ψ[i:j] # boundary_ψ in for a given track in a given direction as function of (p, g)
 
     segments = dir == Forward ? track.segments : reverse!(track.segments)
 
@@ -294,7 +294,7 @@ function tally_φ!(
         pg = @reduced_angular_index(p, g)
         ig = @region_index(i, g)
         Δψ = (boundary_ψ[pg] - q[ig]) * (1 - exp(-τ[g] / sinθs[p]))
-        φ[ig] += 2 * ω[a, p] * Δψ
+        φ[ig] += 2 * ω[a, p] * Δψ # multiplied by 2 because we only loop in n_polar_2
         boundary_ψ[pg] -= Δψ
     end
 
@@ -318,11 +318,11 @@ function set_start_boundary_ψ!(
     if dir == Forward
         next_track = current_track.next_track_fwd
         next_track_dir = dir_next_track_fwd(current_track)
-        flag = !isequal(boundary_out(next_track), Vaccum)
+        flag = !isequal(bc_fwd(current_track), Vaccum)
     elseif dir == Backward
         next_track = current_track.next_track_bwd
         next_track_dir = dir_next_track_bwd(current_track)
-        flag = !isequal(boundary_in(next_track), Vaccum)
+        flag = !isequal(bc_bwd(current_track), Vaccum)
     end
 
     t = universal_id(next_track)
@@ -361,7 +361,7 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
         for g in 1:NGroups
             ig = @region_index(i, g)
             φ[ig] /= (Σt[g] * volumes[i])
-            φ[ig] += 4π * q[ig]
+            φ[ig] += (4π * q[ig])
         end
     end
 

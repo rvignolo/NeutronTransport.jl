@@ -5,6 +5,8 @@
 
 **NeutronTransport** is a reactor physics code that solves the steady-state multigroup neutron transport equation by means of the Method of Characteristics approximation over unstructured grids.
 
+![](demo/c5g7-g7.png)
+
 ## Examples
 
 Let's solve the transport equation over a simple *pin-cell* geometry:

@@ -1,7 +1,7 @@
 using NeutronTransport
 import Gridap: DiscreteModelFromFile
 
-jsonfile = joinpath(@__DIR__, "../c5g7.json")
+jsonfile = joinpath(@__DIR__, "c5g7.json")
 geometry = DiscreteModelFromFile(jsonfile)
 
 # number of azimuthal angles
@@ -26,10 +26,12 @@ segmentize!(tg)
 pq = TabuchiYamamoto(6)
 
 # materials
+NGroups = 7
+
 # all share the same χ
 χ = round.([0.58791, 0.41176, 0.00033906, 1.1761e-7, 0.0, 0.0, 0.0]; digits=4)
 
-guidetube = CrossSections(7;
+guidetube = CrossSections(NGroups;
     Σt = [0.126032, 0.29316, 0.28424, 0.28096, 0.33444, 0.56564, 1.17215],
     Σs0 = [0.0661659  0.05907   0.00028334  1.4622e-6  2.0642e-8   0.0        0.0;
            0.0        0.240377  0.052435    0.0002499  1.9239e-5   2.9875e-6  4.214e-7;
@@ -40,7 +42,7 @@ guidetube = CrossSections(7;
            0.0        0.0       0.0         0.0        0.0         0.049792   1.09912]
 )
 
-fissionchamber = CrossSections(7;
+fissionchamber = CrossSections(NGroups;
     χ = χ,
     νΣf = [1.323401e-8, 1.4345e-8, 1.128599e-6, 1.276299e-5, 3.538502e-7, 1.740099e-6, 5.063302e-6],
     Σt = [0.126032, 0.29316, 0.28425, 0.28102, 0.33446, 0.56564, 1.17214],
@@ -53,7 +55,7 @@ fissionchamber = CrossSections(7;
            0.0        0.0       0.0         0.0        0.0         0.049793   1.0991]
 )
 
-UO₂ = CrossSections(7;
+UO₂ = CrossSections(NGroups;
     χ = χ,
     νΣf = [0.02005998, 0.002027303, 0.01570599, 0.04518301, 0.04334208, 0.2020901, 0.5257105],
     Σt = [0.177949, 0.329805, 0.480388, 0.554367, 0.311801, 0.395168, 0.564406],
@@ -66,7 +68,7 @@ UO₂ = CrossSections(7;
            0.0       0.0       0.0        0.0         0.0        0.0085458  0.27308]
 )
 
-MOX_43 = CrossSections(7;
+MOX_43 = CrossSections(NGroups;
     χ = χ,
     νΣf = [0.021753, 0.002535103, 0.01626799, 0.0654741, 0.03072409, 0.666651, 0.7139904],
     Σt = [0.178731, 0.330849, 0.483772, 0.566922, 0.426227, 0.678997, 0.682852],
@@ -79,7 +81,7 @@ MOX_43 = CrossSections(7;
            0.0       0.0       0.0        0.0         0.0        0.0084948  0.265007]
 )
 
-MOX_7 = CrossSections(7;
+MOX_7 = CrossSections(NGroups;
     χ = χ,
     νΣf = [0.02381395, 0.003858689, 0.024134, 0.09436622, 0.04576988, 0.9281814, 1.0432],
     Σt = [0.181323, 0.334368, 0.493785, 0.591216, 0.474198, 0.833601, 0.853603],
@@ -92,7 +94,7 @@ MOX_7 = CrossSections(7;
            0.0       0.0       0.0        0.0         0.0        0.0088645  0.259529]
 )
 
-MOX_87 = CrossSections(7;
+MOX_87 = CrossSections(NGroups;
     χ = χ,
     νΣf = [0.025186, 0.004739509, 0.02947805, 0.11225, 0.05530301, 1.074999, 1.239298],
     Σt = [0.183045, 0.336705, 0.500507, 0.606174, 0.502754, 0.921028, 0.955231],
@@ -105,7 +107,7 @@ MOX_87 = CrossSections(7;
            0.0       0.0       0.0        0.0         0.0        0.0089681  0.256093]
 )
 
-water = CrossSections(7;
+water = CrossSections(NGroups;
     Σt = [0.159206, 0.41297, 0.59031, 0.58435, 0.718, 1.25445, 2.65038],
     Σs0 = [0.0444777  0.1134    0.00072347  3.7499e-6  5.3184e-8  0.0        0.0;
            0.0        0.282334  0.12994     0.0006234  4.8002e-5  7.4486e-6  1.0455e-6;
@@ -135,4 +137,4 @@ sol = solve(prob; max_residual=1e-5)
 import Gridap: writevtk
 import Gridap.Geometry: get_triangulation
 trian = get_triangulation(tg.mesh.model)
-writevtk(trian, "c5g7-fluxes", cellfields=["g1" => sol(1), "g2" => sol(2), "g2" => sol(2), "g3" => sol(3), "g4" => sol(4), "g5" => sol(5), "g6" => sol(6), "g7" => sol(7)])
+writevtk(trian, "c5g7-fluxes", cellfields=[string(Symbol(:g, i)) => sol(i) for i in 1:NGroups])
