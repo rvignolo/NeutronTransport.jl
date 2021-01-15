@@ -73,7 +73,7 @@ trian = get_triangulation(tg.mesh.model)
 writevtk(trian, "pincell-fluxes", cellfields=["g1" => sol(1), "g2" => sol(2)])
 ```
 
-| ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell-fast.png)  |  ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell-thermal.png) |
+| ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell-g1.png)  |  ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell-g2.png) |
 |:-------------:|:-------------:|
 | Fast flux | Thermal flux |
 
@@ -146,6 +146,6 @@ trian = get_triangulation(tg.mesh.model)
 writevtk(trian, "bwr-fluxes", cellfields=["g1" => sol(1), "g2" => sol(2)])
 ```
 
-| ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/bwr-fast.png)  |  ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/bwr-thermal.png) |
+| ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/bwr-g1.png)  |  ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/bwr-g2.png) |
 |:-------------:|:-------------:|
 | Fast flux | Thermal flux |
