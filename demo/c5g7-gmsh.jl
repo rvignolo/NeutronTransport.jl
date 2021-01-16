@@ -227,3 +227,9 @@ if !("-nopopup" in ARGS)
 end
 
 gmsh.finalize()
+
+# move to json file format
+using Gridap
+mshfile = joinpath(@__DIR__,"c5g7.msh")
+model = GmshDiscreteModel(mshfile; renumber=true)
+Gridap.Io.to_json_file(model, "c5g7.json")

@@ -12,8 +12,6 @@ nφ = 16
 
 # boundary conditions
 bcs = BoundaryConditions(top=Reflective, bottom=Reflective, left=Reflective, right=Reflective)
-# bcs = BoundaryConditions(top=Vaccum, bottom=Vaccum, left=Vaccum, right=Vaccum)
-# bcs = BoundaryConditions(top=Periodic, bottom=Periodic, left=Periodic, right=Periodic)
 
 # initialize track generator
 tg = TrackGenerator(geometry, nφ, δ, bcs=bcs)
