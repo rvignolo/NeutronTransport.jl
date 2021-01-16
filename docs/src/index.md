@@ -9,11 +9,11 @@ Currently, there isn't any reactor physics program written in Julia. **NeutronTr
 The package can be installed using the Julia package manager. From the Julia REPL, type `]` to enter the `Pkg` REPL mode and run:
 
 ```julia
-pkg> add https://github.com/rvignolo/NeutronTransport.jl.git
+pkg> add NeutronTransport
 ```
 
 Or, equivalently, via the `Pkg` API:
 
 ```julia
-julia> import Pkg; Pkg.add(PackageSpec(url = "https://github.com/rvignolo/NeutronTransport.jl.git"))
+julia> import Pkg; Pkg.add("NeutronTransport")
 ```
