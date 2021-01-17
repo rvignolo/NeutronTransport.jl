@@ -5,10 +5,10 @@ jsonfile = joinpath(@__DIR__, "c5g7.json")
 geometry = DiscreteModelFromFile(jsonfile)
 
 # number of azimuthal angles
-nφ = 16
+nφ = 32
 
 # azimuthal spacing
-δ = 0.2 #! con 4 y 0.5 llego a un unexpected case!
+δ = 0.1
 
 # boundary conditions
 bcs = BoundaryConditions(top=Vaccum, bottom=Reflective, left=Reflective, right=Vaccum)
@@ -21,6 +21,7 @@ trace!(tg)
 
 # proceed to segmentation
 segmentize!(tg)
+# segmentize!(tg; k=10, rtol=2*sqrt(eps(Float64)))
 
 # polar quadrature
 pq = TabuchiYamamoto(6)
@@ -132,9 +133,9 @@ materials = Dict(
 prob = MoCProblem(tg, pq, materials)
 
 # solve
-sol = solve(prob; max_residual=1e-5)
+sol = solve(prob; max_residual=1e-7)
 
 import Gridap: writevtk
 import Gridap.Geometry: get_triangulation
 trian = get_triangulation(tg.mesh.model)
-writevtk(trian, "c5g7-fluxes", cellfields=[string(Symbol(:g, i)) => sol(i) for i in 1:NGroups])
+writevtk(trian, "c5g7-fluxes-new2", cellfields=[string(Symbol(:g, i)) => sol(i) for i in 1:NGroups])

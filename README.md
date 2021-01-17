@@ -28,6 +28,6 @@ julia> import Pkg; Pkg.add("NeutronTransport")
 
 These are some popular examples solved with NeutronTransport:
 
-| ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell-g1.png)  | ![](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/bwr-g2.png) | ![](demo/c5g7-g7.png) |
+| ![](demo/pincell-g1.png) | ![](demo/bwr-g2.png) | ![](demo/c5g7-g7.png) |
 |:-------------:|:-------------:|:-------------:|
-| [*Pincell*](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/pincell.jl) | [4 by 4 BWR lattice (2 Gd pins)](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/bwr.jl) | [C5G7 Benchmark](https://github.com/rvignolo/NeutronTransport.jl/blob/main/demo/c5g7.jl) |
+| [*Pincell*](demo/pincell.jl) | [4 by 4 BWR lattice (2 Gd pins)](demo/bwr.jl) | [C5G7 Benchmark](demo/c5g7.jl) |

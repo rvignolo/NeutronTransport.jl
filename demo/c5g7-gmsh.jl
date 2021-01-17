@@ -57,7 +57,7 @@ N = 17
 # in cm
 p = 1.26
 r = 0.54
-lc = 0.3
+lc = 0.5
 
 gmsh.initialize()
 gmsh.model.add("c5g7")
@@ -171,8 +171,8 @@ for n in 1:2
     end
 end
 
-s = 3 * N * p
-lc = 1.
+s = 2 * N * p
+lc = 0.6
 factory = gmsh.model.geo
 
 p1 = factory.addPoint(0, 0, 0, lc)
@@ -180,14 +180,83 @@ p2 = factory.addPoint(s, 0, 0, lc)
 p3 = factory.addPoint(s, s, 0, lc)
 p4 = factory.addPoint(0, s, 0, lc)
 
-l1 = factory.addLine(p1, p2)
-l2 = factory.addLine(p2, p3)
-l3 = factory.addLine(p3, p4)
-l4 = factory.addLine(p4, p1)
+ml1 = factory.addLine(p1, p2)
+ml2 = factory.addLine(p2, p3)
+ml3 = factory.addLine(p3, p4)
+ml4 = factory.addLine(p4, p1)
 
-cl1 = factory.addCurveLoop([l1, l2, l3, l4])
+cl1 = factory.addCurveLoop([ml1, ml2, ml3, ml4])
 
-h2oTag = factory.addPlaneSurface(vcat(cl1, guidetube, fissionchamber, UO₂, MOX_43, MOX_7, MOX_87))
+moderator = factory.addPlaneSurface(vcat(cl1, guidetube, fissionchamber, UO₂, MOX_43, MOX_7, MOX_87))
+
+s = 2 * N * p
+δs = 1 / 3 * N * p
+lc = 1.
+factory = gmsh.model.geo
+
+p1 = factory.addPoint(s, 0, 0, lc)
+p2 = factory.addPoint(s, s, 0, lc)
+p3 = factory.addPoint(0, s, 0, lc)
+p4 = factory.addPoint(0, s + δs, 0, lc)
+p5 = factory.addPoint(s + δs, s + δs, 0, lc)
+p6 = factory.addPoint(s + δs, 0, 0, lc)
+
+r1l1 = factory.addLine(p1, p2)
+r1l2 = factory.addLine(p2, p3)
+r1l3 = factory.addLine(p3, p4)
+r1l4 = factory.addLine(p4, p5)
+r1l5 = factory.addLine(p5, p6)
+r1l6 = factory.addLine(p6, p1)
+
+cl1 = factory.addCurveLoop([r1l1, r1l2, r1l3, r1l4, r1l5, r1l6])
+
+ref1 = factory.addPlaneSurface([cl1])
+
+s += δs
+δs = 1 / 3 * N * p
+lc = 1.5
+factory = gmsh.model.geo
+
+p1 = factory.addPoint(s, 0, 0, lc)
+p2 = factory.addPoint(s, s, 0, lc)
+p3 = factory.addPoint(0, s, 0, lc)
+p4 = factory.addPoint(0, s + δs, 0, lc)
+p5 = factory.addPoint(s + δs, s + δs, 0, lc)
+p6 = factory.addPoint(s + δs, 0, 0, lc)
+
+r2l1 = factory.addLine(p1, p2)
+r2l2 = factory.addLine(p2, p3)
+r2l3 = factory.addLine(p3, p4)
+r2l4 = factory.addLine(p4, p5)
+r2l5 = factory.addLine(p5, p6)
+r2l6 = factory.addLine(p6, p1)
+
+cl1 = factory.addCurveLoop([r2l1, r2l2, r2l3, r2l4, r2l5, r2l6])
+
+ref2 = factory.addPlaneSurface([cl1])
+
+s += δs
+δs = 1 / 3 * N * p
+lc = 2.
+factory = gmsh.model.geo
+
+p1 = factory.addPoint(s, 0, 0, lc)
+p2 = factory.addPoint(s, s, 0, lc)
+p3 = factory.addPoint(0, s, 0, lc)
+p4 = factory.addPoint(0, s + δs, 0, lc)
+p5 = factory.addPoint(s + δs, s + δs, 0, lc)
+p6 = factory.addPoint(s + δs, 0, 0, lc)
+
+r3l1 = factory.addLine(p1, p2)
+r3l2 = factory.addLine(p2, p3)
+r3l3 = factory.addLine(p3, p4)
+r3l4 = factory.addLine(p4, p5)
+r3l5 = factory.addLine(p5, p6)
+r3l6 = factory.addLine(p6, p1)
+
+cl1 = factory.addCurveLoop([r3l1, r3l2, r3l3, r3l4, r3l5, r3l6])
+
+ref3 = factory.addPlaneSurface([cl1])
 
 pg1 = gmsh.model.geo.addPhysicalGroup(2, guidetube)
 pg2 = gmsh.model.geo.addPhysicalGroup(2, fissionchamber)
@@ -195,11 +264,11 @@ pg3 = gmsh.model.geo.addPhysicalGroup(2, UO₂)
 pg4 = gmsh.model.geo.addPhysicalGroup(2, MOX_43)
 pg5 = gmsh.model.geo.addPhysicalGroup(2, MOX_7)
 pg6 = gmsh.model.geo.addPhysicalGroup(2, MOX_87)
-pg7 = gmsh.model.geo.addPhysicalGroup(2, [h2oTag])
-pg8 = gmsh.model.geo.addPhysicalGroup(1, [l1])
-pg9 = gmsh.model.geo.addPhysicalGroup(1, [l2])
-pg10 = gmsh.model.geo.addPhysicalGroup(1, [l3])
-pg11 = gmsh.model.geo.addPhysicalGroup(1, [l4])
+pg7 = gmsh.model.geo.addPhysicalGroup(2, [moderator, ref1, ref2, ref3])
+pg8 = gmsh.model.geo.addPhysicalGroup(1, [ml1, r1l6, r2l6, r3l6])
+pg9 = gmsh.model.geo.addPhysicalGroup(1, [ml4, r1l3, r2l3, r3l3])
+pg10 = gmsh.model.geo.addPhysicalGroup(1, [r3l4])
+pg11 = gmsh.model.geo.addPhysicalGroup(1, [r3l5])
 
 gmsh.model.setPhysicalName(2, pg1, "guide-tube")
 gmsh.model.setPhysicalName(2, pg2, "fission-chamber")
@@ -220,7 +289,7 @@ gmsh.model.geo.synchronize()
 
 gmsh.model.mesh.generate(2)
 
-gmsh.write("c5g7.msh")
+gmsh.write("c5g7-2.msh")
 
 if !("-nopopup" in ARGS)
     gmsh.fltk.run()
@@ -230,6 +299,6 @@ gmsh.finalize()
 
 # move to json file format
 using Gridap
-mshfile = joinpath(@__DIR__,"c5g7.msh")
+mshfile = joinpath(@__DIR__,"../c5g7-2.msh")
 model = GmshDiscreteModel(mshfile; renumber=true)
-Gridap.Io.to_json_file(model, "c5g7.json")
+Gridap.Io.to_json_file(model, "c5g7-2.json")
