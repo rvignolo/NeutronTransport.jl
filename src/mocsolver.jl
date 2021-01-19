@@ -33,6 +33,13 @@ function MoCSolution{T}(prob::MoCProblem) where {T}
     return MoCSolution(prob, one(T), zero(T), 0, φ, φ_prev, q, boundary_ψ, start_boundary_ψ)
 end
 
+function show(io::IO, sol::MoCSolution)
+    @unpack keff, residual, iterations = sol
+    println(io, "  keff: ", keff)
+    println(io, "  Residual: ", residual)
+    print(io,   "  Iterations: ", iterations)
+end
+
 function (sol::MoCSolution)(i::Int, g::Int)
     NGroups = ngroups(sol.prob)
     g in 1:NGroups || throw(DomainError(g, "`g` is outside of domain."))
@@ -61,29 +68,34 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::T) w
     set_uniform_start_boundary_ψ!(sol, zero(T))
     update_boundary_ψ!(sol)
 
-    @set! sol.iterations = 0
-    while sol.iterations < max_iter
+    @info "MoC iterations start..."
+    ϵ = Inf
+    iter = 0
+    while iter < max_iter
 
         normalize_fluxes!(sol, prob)
         compute_q!(sol, prob)
         compute_φ!(sol, prob)
         @set! sol.keff *= total_fission_source(sol, prob)
-        @set! sol.residual = residual(sol, prob)
+        ϵ = residual(sol, prob)
         update_prev_φ!(sol)
+
+        @info "iteration $(iter)" sol.keff ϵ
 
         # we need at least three iterations:
         #  0. boundary conditions do not exists (unless everything is vaccum)
         #  1. we can compute a residual but it is not correct (previous iteration is fruit)
         #  2. now we can compute a correct residual
 
-        if sol.iterations > 1 && isless(sol.residual, max_ϵ)
+        if iter > 1 && isless(ϵ, max_ϵ)
             break
         end
 
-        @show sol.residual
-
-        @set! sol.iterations += 1
+        iter += 1
     end
+
+    @set! sol.residual = ϵ
+    @set! sol.iterations = iter
 
     return sol
 end

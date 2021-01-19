@@ -71,6 +71,16 @@ function MoCProblem(
     )
 end
 
+dimension(::MoCProblem{Dim}) where{Dim} = Dim
+nregions(::MoCProblem{Dim,NRegions}) where{Dim,NRegions} = NRegions
+ngroups(::MoCProblem{Dim,NRegions,NGroups}) where{Dim,NRegions,NGroups} = NGroups
+
+function show(io::IO, prob::MoCProblem)
+    println(io, "  Problem Dimension: ", dimension(prob))
+    println(io, "  Number of regions: ", nregions(prob))
+    print(io,   "  Number of energy groups: ", ngroups(prob))
+end
+
 # si quiero que los primeros NRegions sean para el 1er group, etc...
 # macro region_index(i, g)
 #     return :((g - 1) * NRegions + i)
