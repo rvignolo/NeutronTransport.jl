@@ -10,8 +10,19 @@ using Gridap.Geometry: get_face_tag, get_tag_from_name
 
 import Base: show
 
-include("formulation.jl")
 include("materials.jl")
+
+abstract type TransportFormulation end
+
+struct MethodOfCharacteristics <: TransportFormulation end
+struct CollisionProbability <: TransportFormulation end
+struct DiscreteOrdinates <: TransportFormulation end
+struct Diffusion <: TransportFormulation end
+
+const MoC = MethodOfCharacteristics
+const CP = CollisionProbability
+const SN = DiscreteOrdinates
+
 include("polar_quad.jl")
 include("quadrature.jl")
 

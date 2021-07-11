@@ -48,7 +48,7 @@ pin_gd = CrossSections(2;
     Σs0 = [3.38096e-1  6.92807e-4; 0.0e-0 3.83204e-1]
 )
 
-materials = Dict("pin" => pin, "cladding" => cladding, "water" => water, "pin-gd" => pin_gd)
+materials = ["pin" => pin, "cladding" => cladding, "water" => water, "pin-gd" => pin_gd]
 
 # define the problem
 prob = MoCProblem(tg, pq, materials)

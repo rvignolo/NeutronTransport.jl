@@ -3,17 +3,18 @@ import RayTracing: num_dims, num_cells
 """
     MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,M} <: TransportProblem{Dim,NRegions,NGroups}
 
-Defines a problem that ought to be solved by means of the Method of Characteristics, with
-dimension `D`, number of flat source regions `NFSR`, number of energy groups `NG`, ray tracing
+Defines a problem that ought to be solved using the Method of Characteristics, with
+dimension `Dim`, number of flat source regions `NRegions`, number of energy groups
+`NGroups`, ray tracing
 """
-struct MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,M} <: TransportProblem{Dim,NRegions,NGroups}
+struct MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,M<:Vector{<:CrossSections}} <: TransportProblem{Dim,NRegions,NGroups}
     nφ::Int
     nψ::Int
 
     trackgenerator::G
     quadrature::Q
 
-    materials::M
+    materials::M             # IDEA: xs or xss (from XSs) might be a nicer name
     cell_tag::Vector{Int8}   # gridap cell to gridap tag
     tag_to_idx::Vector{Int8} # gridap tag to NeutronTransport material index
 
@@ -24,26 +25,22 @@ struct MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,M} <: Tra
     end
 end
 
-function MoCProblem(
-    tg::TrackGenerator{T1}, polar_quadrature::PolarQuadrature{N,T2}, materials::M
-) where {T1,N,T2,M}
+function MoCProblem(tg::TrackGenerator, polar_quadrature::PolarQuadrature, materials)
     @unpack mesh, azimuthal_quadrature, n_total_tracks = tg
 
     Dim = num_dims(mesh)
-    NGroups = ngroups.(values(materials))[1] # TODO: check all equal
-    NRegions = num_cells(mesh)
 
+    xs = last.(materials)
+    NGroups = ngroups(first(xs))
+    if !all(g -> isequal(g, NGroups), ngroups.(xs))
+        error("all `CrossSections` *must* have the same number of energy groups.")
+    end
+
+    NRegions = num_cells(mesh)
     n_polar_2 = npolar2(polar_quadrature)
 
     nφ = NRegions * NGroups
     nψ = n_total_tracks * 2 * n_polar_2 * NGroups # 2 is the number of directions
-
-    T = promote_type(T1, T2)
-    φ = Vector{T}(undef, nφ)
-    φ_prev = Vector{T}(undef, nφ)
-    q = Vector{T}(undef, nφ)
-    boundary_ψ = Vector{T}(undef, nψ)
-    start_boundary_ψ = Vector{T}(undef, nψ)
 
     quadrature = Quadrature(azimuthal_quadrature, polar_quadrature)
 
@@ -52,23 +49,18 @@ function MoCProblem(
     tag_to_name = face_labeling.tag_to_name
     tag_to_idx = Vector{Int8}(undef, length(tag_to_name))
 
-    #! puede que la funcion `indexin` ayude aqui
-    # me van a quedar sin definir las posiciones q no correspondan a materiales...
+    # Note that positions that do not represent materials (e.g. boundary conditions) won't
+    # be set here
     for (i, pair) in enumerate(materials)
-        key, value = pair
-        # dado un name mio, busco su tag en gridap
-        gridap_tag = get_tag_from_name(face_labeling, key)
+
+        # given a material name, find its gridap tag
+        gridap_tag = get_tag_from_name(face_labeling, first(pair))
+
+        # mapping from gridap tag to NeutronTransport index
         tag_to_idx[gridap_tag] = i
     end
 
-    # mmm. no necesito que sea named tuple ya que todos los types son iguales y puedo ir a
-    # un vector. por otro lado, tambien podria usar una tupla, no es necesario la named part
-    # materials_nt = (; (Symbol(k) => v for (k, v) in materials)...)
-    materials_v = [values(materials)...]
-
-    return MoCProblem{Dim,NRegions,NGroups}(
-        nφ, nψ, tg, quadrature, materials_v, cell_tag, tag_to_idx
-    )
+    return MoCProblem{Dim,NRegions,NGroups}(nφ, nψ, tg, quadrature, xs, cell_tag, tag_to_idx)
 end
 
 dimension(::MoCProblem{Dim}) where{Dim} = Dim

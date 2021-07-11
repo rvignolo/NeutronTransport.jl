@@ -26,7 +26,9 @@ segmentize!(tg)
 # polar quadrature
 pq = TabuchiYamamoto(6)
 
-# materials
+# materials definition
+
+# number of energy groups
 NGroups = 7
 
 # all share the same χ
@@ -119,7 +121,7 @@ water = CrossSections(NGroups;
            0.0        0.0       0.0         0.0        0.0        0.13244    2.4807]
 )
 
-materials = Dict(
+materials = [
     "guide-tube" => guidetube,
     "fission-chamber" => fissionchamber,
     "UO2" => UO₂,
@@ -127,7 +129,7 @@ materials = Dict(
     "MOX_7" => MOX_7,
     "MOX_87" => MOX_87,
     "water" => water
-)
+]
 
 # define the problem
 prob = MoCProblem(tg, pq, materials)

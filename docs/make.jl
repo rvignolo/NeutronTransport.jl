@@ -11,7 +11,7 @@ makedocs(bib;
     sitename="NeutronTransport.jl",
     format=Documenter.HTML(;
         prettyurls=false,
-        canonical="https://rvignolo.github.io/NeutronTransport.jl",
+        canonical="https://rvignolo.github.io/NeutronTransport.jl/stable",
         assets=String[],
     ),
     pages=[
