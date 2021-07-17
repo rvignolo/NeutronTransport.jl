@@ -113,26 +113,18 @@ end
 
 function _optical_length!(prob::MoCProblem, track::Track)
     NGroups = ngroups(prob)
-    @unpack materials, cell_tag, tag_to_idx = prob
+    @unpack xss, fsr_tag = prob
 
     for segment in track.segments
         @unpack ℓ, τ = segment
 
         resize!(τ, NGroups)
 
-        #! no creo que element sea igual al id bien que va con 1:nfsr
         i = segment.element
+        idx = fsr_tag[i]
+        xs = xss[idx]
 
-        # dada una cell id, encuentro el tag de Gridap
-        tag = cell_tag[i]
-
-        # dado un tag de Gridap, busco el idx de NeutronTransport
-        idx = tag_to_idx[tag]
-
-        # tomo el material
-        material = materials[idx]
-
-        @unpack Σt = material
+        @unpack Σt = xs
 
         for g in 1:NGroups
             τ[g] = Σt[g] * ℓ
@@ -165,22 +157,16 @@ function total_fission_source(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack φ = sol
-    @unpack trackgenerator, materials, cell_tag, tag_to_idx = prob
+    @unpack trackgenerator, xss, fsr_tag = prob
     @unpack volumes = trackgenerator
 
     qft = zero(T)
     for i in 1:NRegions
 
-        # dada una cell id, encuentro el tag de Gridap
-        tag = cell_tag[i]
+        idx = fsr_tag[i]
+        xs = xss[idx]
 
-        # dado un tag de Gridap, busco el idx de NeutronTransport
-        idx = tag_to_idx[tag]
-
-        # tomo el material
-        material = materials[idx]
-
-        @unpack νΣf = material
+        @unpack νΣf = xs
 
         for g′ in 1:NGroups
             ig′ = @region_index(i, g′)
@@ -198,20 +184,14 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack keff, φ, q = sol
-    @unpack materials, cell_tag, tag_to_idx = prob
+    @unpack xss, fsr_tag = prob
 
     for i in 1:NRegions
 
-        # dada una cell id `i`, encuentro el tag de Gridap
-        tag = cell_tag[i]
+        idx = fsr_tag[i]
+        xs = xss[idx]
 
-        # dado un tag de Gridap, busco el idx de NeutronTransport
-        idx = tag_to_idx[tag]
-
-        # tomo el material
-        material = materials[idx]
-
-        @unpack χ, Σt, νΣf, Σs0 = material
+        @unpack χ, Σt, νΣf, Σs0 = xs
 
         for g in 1:NGroups
             ig = @region_index(i, g)
@@ -296,7 +276,6 @@ function tally_φ!(
     @unpack sinθs = polar
     @unpack τ = segment
 
-    #! no creo que element sea igual al id bien que va con 1:nfsr
     i = segment.element
     a = track.azim_idx
     n_polar_2 = npolar2(polar)
@@ -354,21 +333,15 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack φ, q = sol
-    @unpack trackgenerator, materials, cell_tag, tag_to_idx = prob
+    @unpack trackgenerator, xss, fsr_tag = prob
     @unpack volumes = trackgenerator
 
     for i in 1:NRegions
 
-        # dada una cell id `i`, encuentro el tag de Gridap
-        tag = cell_tag[i]
+        idx = fsr_tag[i]
+        xs = xss[idx]
 
-        # dado un tag de Gridap, busco el idx de NeutronTransport
-        idx = tag_to_idx[tag]
-
-        # tomo el material
-        material = materials[idx]
-
-        @unpack Σt = material
+        @unpack Σt = xs
 
         for g in 1:NGroups
             ig = @region_index(i, g)
@@ -384,7 +357,7 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack keff, φ, φ_prev = sol
-    @unpack materials, cell_tag, tag_to_idx = prob
+    @unpack xss, fsr_tag = prob
 
     # calculamos la fuente total (integrada en energia g) para cada celda i (fuente new y
     # old). Podriamos almacenar la new y dejarla como old para la siguiente pasada...
@@ -392,19 +365,13 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     ϵ = zero(T)
     for i in 1:NRegions
 
-        # dada una cell id, encuentro el tag de Gridap
-        tag = cell_tag[i]
-
-        # dado un tag de Gridap, busco el idx de NeutronTransport
-        idx = tag_to_idx[tag]
-
-        # tomo el material
-        material = materials[idx]
+        idx = fsr_tag[i]
+        xs = xss[idx]
 
         new_qi = zero(T)
         old_qi = zero(T)
 
-        @unpack νΣf, Σs0 = material
+        @unpack νΣf, Σs0 = xs
 
         # total fission source in each region (χ sum 1 when ∫ in g)
         for g′ in 1:NGroups
