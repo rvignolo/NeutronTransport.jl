@@ -7,33 +7,30 @@ Defines a problem that ought to be solved using the Method of Characteristics, w
 dimension `Dim`, number of flat source regions `NRegions`, number of energy groups
 `NGroups`, ray tracing
 """
-struct MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,X<:Vector{<:CrossSections}} <: TransportProblem{Dim,NRegions,NGroups}
+struct MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,Xs<:XSs} <: TransportProblem{Dim,NRegions,NGroups}
     nφ::Int
     nψ::Int
 
     trackgenerator::G
     quadrature::Q
 
-    xss::X             # IDEA: xs or xss (from XSs) might be a nicer name
-    cell_tag::Vector{Int8}   # gridap cell to gridap tag
-    tag_to_idx::Vector{Int8} # gridap tag to NeutronTransport material index
-    fsr_tag::Vector{Int8}    # cell, element or fsr id to material tag
+    xss::Vector{Xs}
+    fsr_tag::Vector{Int8}  # cell/element/fsr to xs tag (tag is the index in the xss array)
 
     function MoCProblem{Dim,NRegions,NGroups}(
-        nφ, nψ, tg::G, quad::Q, xss::X, cell_tag, tag2idx, fsr_tag
+        nφ, nψ, tg::G, quad::Q, xss::Vector{X}, fsr_tag
     ) where {Dim,NRegions,NGroups,G,Q,X}
-        return new{Dim,NRegions,NGroups,G,Q,X}(nφ, nψ, tg, quad, xss, cell_tag, tag2idx, fsr_tag)
+        return new{Dim,NRegions,NGroups,G,Q,X}(nφ, nψ, tg, quad, xss, fsr_tag)
     end
 end
 
-function MoCProblem(tg::TrackGenerator, polar_quadrature::PolarQuadrature, xss)
+function MoCProblem(tg::TrackGenerator, polar_quadrature::PolarQuadrature, xss::Vector{<:XSs})
     @unpack mesh, azimuthal_quadrature, n_total_tracks = tg
 
     Dim = num_dims(mesh)
 
-    xs = last.(xss)
-    NGroups = ngroups(first(xs))
-    if !all(g -> isequal(g, NGroups), ngroups.(xs))
+    NGroups = ngroups(first(xss))
+    if !all(g -> isequal(g, NGroups), ngroups.(xss))
         error("all `CrossSections` *must* have the same number of energy groups.")
     end
 
@@ -46,30 +43,22 @@ function MoCProblem(tg::TrackGenerator, polar_quadrature::PolarQuadrature, xss)
     quadrature = Quadrature(azimuthal_quadrature, polar_quadrature)
 
     face_labeling = get_face_labeling(tg.mesh.model)
-    cell_tag = get_face_tag(face_labeling, Dim)
-    tag_to_name = face_labeling.tag_to_name
-    tag_to_idx = Vector{Int8}(undef, length(tag_to_name))
-    tag_to_idx2 = Dict{Int8,Int8}()
+    tag_to_idx = Dict{Int8,Int8}()
+    for (i, xs) in enumerate(xss)
+        # given a xs name, find its gridap tag
+        gridap_tag = get_tag_from_name(face_labeling, xs.name)
 
-    # Note that positions that do not represent materials (e.g. boundary conditions) won't
-    # be set here
-    for (i, pair) in enumerate(xss)
-
-        # given a material name, find its gridap tag
-        gridap_tag = get_tag_from_name(face_labeling, first(pair))
-
-        # mapping from gridap tag to NeutronTransport index
-        tag_to_idx[gridap_tag] = i
-
-        push!(tag_to_idx2, gridap_tag => i)
+        # map gridap tag to xs idx
+        push!(tag_to_idx, gridap_tag => i)
     end
 
-    fsr_tag = similar(cell_tag)
+    cell_tag = get_face_tag(face_labeling, Dim)  # gridap cell/element/fsr tags
+    fsr_tag = similar(cell_tag)                  # NeutronTransport cell/element/fsr tags
     for (i, gridap_tag) in enumerate(cell_tag)
-        fsr_tag[i] = tag_to_idx2[gridap_tag]
+        fsr_tag[i] = tag_to_idx[gridap_tag]
     end
 
-    return MoCProblem{Dim,NRegions,NGroups}(nφ, nψ, tg, quadrature, xs, cell_tag, tag_to_idx, fsr_tag)
+    return MoCProblem{Dim,NRegions,NGroups}(nφ, nψ, tg, quadrature, xss, fsr_tag)
 end
 
 dimension(::MoCProblem{Dim}) where{Dim} = Dim

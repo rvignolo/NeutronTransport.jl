@@ -10,7 +10,7 @@ using Gridap.Geometry: get_face_tag, get_tag_from_name
 
 import Base: show
 
-include("materials.jl")
+include("cross_section.jl")
 
 abstract type TransportFormulation end
 

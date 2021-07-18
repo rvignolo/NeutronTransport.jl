@@ -52,11 +52,16 @@ function (sol::MoCSolution)(g::Int)
     return view(sol.φ, g:NGroups:lastindex(sol.φ))
 end
 
-function solve(prob::MoCProblem; max_iterations::Int=1000, max_residual::Real=1e-7)
-    return _solve_eigenvalue_problem(prob, max_iterations, max_residual)
+function solve(
+    prob::MoCProblem;
+    max_iterations::Int=1000, max_residual::Real=1e-7, debug::Bool=false
+)
+    return _solve_eigenvalue_problem(prob, max_iterations, max_residual, debug)
 end
 
-function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::T) where {T<:Real}
+function _solve_eigenvalue_problem(
+    prob::MoCProblem, max_iter::Int, max_ϵ::T, debug::Bool
+) where {T<:Real}
 
     sol = MoCSolution{T}(prob)
 
@@ -68,7 +73,7 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::T) w
     set_uniform_start_boundary_ψ!(sol, zero(T))
     update_boundary_ψ!(sol)
 
-    @info "MoC iterations start..."
+    debug && @info "MoC iterations start..."
     ϵ = Inf
     iter = 0
     while iter < max_iter
@@ -80,7 +85,7 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::T) w
         ϵ = residual(sol, prob)
         update_prev_φ!(sol)
 
-        @info "iteration $(iter)" sol.keff ϵ
+        debug && @info "iteration $(iter)" sol.keff ϵ
 
         # we need at least three iterations:
         #  0. boundary conditions do not exists (unless everything is vaccum)
@@ -234,7 +239,6 @@ end
 
 function tally!(sol::MoCSolution, prob::MoCProblem, track::Track, dir::DirectionType)
     NGroups = ngroups(prob)
-    @unpack φ, q = sol
     @unpack quadrature = prob
 
     n_polar_2 = npolar2(quadrature.polar)
