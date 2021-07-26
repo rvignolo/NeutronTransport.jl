@@ -59,10 +59,9 @@ function solve(
     return _solve_eigenvalue_problem(prob, max_iterations, max_residual, debug)
 end
 
-function _solve_eigenvalue_problem(
-    prob::MoCProblem, max_iter::Int, max_ϵ::T, debug::Bool
-) where {T<:Real}
+function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real, debug::Bool)
 
+    T =  eltype(prob)
     sol = MoCSolution{T}(prob)
 
     optical_length!(prob)

@@ -50,7 +50,7 @@ xs = [pin, cladding, water]
 prob = MoCProblem(tg, pq, xs)
 
 # solve
-sol = solve(prob)
+sol = solve(prob, debug=true)
 
 import Gridap: writevtk
 import Gridap.Geometry: get_triangulation

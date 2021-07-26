@@ -1,13 +1,13 @@
 import RayTracing: num_dims, num_cells
 
 """
-    MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,M} <: TransportProblem{Dim,NRegions,NGroups}
+    MoCProblem{Dim,NRegions,NGroups,T,G<:TrackGenerator,Q<:Quadrature,M} <: TransportProblem{Dim,NRegions,NGroups}
 
 Defines a problem that ought to be solved using the Method of Characteristics, with
 dimension `Dim`, number of flat source regions `NRegions`, number of energy groups
 `NGroups`, ray tracing
 """
-struct MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,Xs<:XSs} <: TransportProblem{Dim,NRegions,NGroups}
+struct MoCProblem{Dim,NRegions,NGroups,T,G<:TrackGenerator,Q<:Quadrature,Xs<:XSs} <: TransportProblem{Dim,NRegions,NGroups}
     nφ::Int
     nψ::Int
 
@@ -17,10 +17,10 @@ struct MoCProblem{Dim,NRegions,NGroups,G<:TrackGenerator,Q<:Quadrature,Xs<:XSs} 
     xss::Vector{Xs}
     fsr_tag::Vector{Int8}  # cell/element/fsr to xs tag (tag is the index in the xss array)
 
-    function MoCProblem{Dim,NRegions,NGroups}(
+    function MoCProblem{Dim,NRegions,NGroups,T}(
         nφ, nψ, tg::G, quad::Q, xss::Vector{X}, fsr_tag
-    ) where {Dim,NRegions,NGroups,G,Q,X}
-        return new{Dim,NRegions,NGroups,G,Q,X}(nφ, nψ, tg, quad, xss, fsr_tag)
+    ) where {Dim,NRegions,NGroups,T,G,Q,X}
+        return new{Dim,NRegions,NGroups,T,G,Q,X}(nφ, nψ, tg, quad, xss, fsr_tag)
     end
 end
 
@@ -33,6 +33,7 @@ function MoCProblem(tg::TrackGenerator, polar_quadrature::PolarQuadrature, xss::
     if !all(g -> isequal(g, NGroups), ngroups.(xss))
         error("all `CrossSections` *must* have the same number of energy groups.")
     end
+    T = promote_type(eltype.(xss)...)
 
     NRegions = num_cells(mesh)
     n_polar_2 = npolar2(polar_quadrature)
@@ -58,12 +59,13 @@ function MoCProblem(tg::TrackGenerator, polar_quadrature::PolarQuadrature, xss::
         fsr_tag[i] = tag_to_idx[gridap_tag]
     end
 
-    return MoCProblem{Dim,NRegions,NGroups}(nφ, nψ, tg, quadrature, xss, fsr_tag)
+    return MoCProblem{Dim,NRegions,NGroups,T}(nφ, nψ, tg, quadrature, xss, fsr_tag)
 end
 
 dimension(::MoCProblem{Dim}) where{Dim} = Dim
 nregions(::MoCProblem{Dim,NRegions}) where{Dim,NRegions} = NRegions
 ngroups(::MoCProblem{Dim,NRegions,NGroups}) where{Dim,NRegions,NGroups} = NGroups
+eltype(::MoCProblem{Dim,NRegions,NGroups,T}) where{Dim,NRegions,NGroups,T} = T
 
 function show(io::IO, prob::MoCProblem)
     println(io, "  Problem Dimension: ", dimension(prob))
