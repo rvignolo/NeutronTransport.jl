@@ -13,10 +13,12 @@ struct MoCSolution{T<:Real,P<:MoCProblem} <: TransportSolution
 
     # scalar flux
     φ::Vector{T}
-    φ_prev::Vector{T}
 
     # reduced source
     q::Vector{T}
+
+    # total source (integrated in energy given per region) is used for convergence purposes
+    Q::Vector{T}
 
     # angular flux at boundary
     boundary_ψ::Vector{T}
@@ -25,12 +27,13 @@ end
 
 function MoCSolution{T}(prob::MoCProblem) where {T}
     @unpack nφ, nψ = prob
+    NRegions = nregions(prob)
     φ = Vector{T}(undef, nφ)
-    φ_prev = Vector{T}(undef, nφ)
     q = Vector{T}(undef, nφ)
+    Q = Vector{T}(undef, NRegions)
     boundary_ψ = Vector{T}(undef, nψ)
     start_boundary_ψ = Vector{T}(undef, nψ)
-    return MoCSolution(prob, one(T), zero(T), 0, φ, φ_prev, q, boundary_ψ, start_boundary_ψ)
+    return MoCSolution(prob, one(T), zero(T), 0, φ, q, Q, boundary_ψ, start_boundary_ψ)
 end
 
 function show(io::IO, sol::MoCSolution)
@@ -67,8 +70,8 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real
     optical_length!(prob)
 
     @set! sol.keff = one(T)
+    set_uniform_Q!(sol, zero(T))
     set_uniform_φ!(sol, one(T))
-    update_prev_φ!(sol)
     set_uniform_start_boundary_ψ!(sol, zero(T))
     update_boundary_ψ!(sol)
 
@@ -82,7 +85,6 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real
         compute_φ!(sol, prob)
         @set! sol.keff *= total_fission_source(sol, prob)
         ϵ = residual(sol, prob)
-        update_prev_φ!(sol)
 
         debug && @info "iteration $(iter)" sol.keff ϵ
 
@@ -136,13 +138,13 @@ function _optical_length!(prob::MoCProblem, track::Track)
     end
 end
 
+@inline set_uniform_Q!(sol::MoCSolution, Q::Real) = fill!(sol.Q, Q)
 @inline set_uniform_φ!(sol::MoCSolution, φ::Real) = fill!(sol.φ, φ)
 @inline set_uniform_start_boundary_ψ!(sol::MoCSolution, ψ::Real) = fill!(sol.start_boundary_ψ, ψ)
-@inline update_prev_φ!(sol::MoCSolution) = copy!(sol.φ_prev, sol.φ)
 @inline update_boundary_ψ!(sol::MoCSolution) = copy!(sol.boundary_ψ, sol.start_boundary_ψ)
 
 function normalize_fluxes!(sol::MoCSolution, prob::MoCProblem)
-    @unpack φ, φ_prev, boundary_ψ, start_boundary_ψ = sol
+    @unpack φ, boundary_ψ, start_boundary_ψ = sol
 
     # total fission source
     qft = total_fission_source(sol, prob)
@@ -150,7 +152,6 @@ function normalize_fluxes!(sol::MoCSolution, prob::MoCProblem)
     # λ is the normalization factor
     λ = 1 / qft
     φ .*= λ
-    φ_prev .*= λ
     boundary_ψ .*= λ
     start_boundary_ψ .*= λ
 
@@ -171,14 +172,17 @@ function total_fission_source(sol::MoCSolution{T}, prob::MoCProblem) where {T}
         xs = xss[idx]
 
         @unpack νΣf = xs
+        fissionable = isfissionable(xs)
 
-        for g′ in 1:NGroups
-            ig′ = @region_index(i, g′)
-            qft += νΣf[g′] * φ[ig′] * volumes[i]
+        if fissionable
+            for g′ in 1:NGroups
+                ig′ = @region_index(i, g′)
+                qft += νΣf[g′] * φ[ig′] * volumes[i]
+            end
+            # qft += sum(
+            #     νΣf[g′] * φ[@region_index(i, g′)] * volumes[i] for g′ in 1:NGroups
+            # )
         end
-        # qft += sum(
-        #     νΣf[g′] * φ[@region_index(i, g′)] * volumes[i] for g′ in 1:NGroups
-        # )
     end
 
     return qft
@@ -196,6 +200,7 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
         xs = xss[idx]
 
         @unpack χ, Σt, νΣf, Σs0 = xs
+        fissionable = isfissionable(xs)
 
         for g in 1:NGroups
             ig = @region_index(i, g)
@@ -203,7 +208,9 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
             for g′ in 1:NGroups
                 ig′ = @region_index(i, g′)
                 qig += Σs0[g′, g] * φ[ig′]
-                qig += 1 / keff * χ[g] * νΣf[g′] * φ[ig′]
+                if fissionable
+                    qig += 1 / keff * χ[g] * νΣf[g′] * φ[ig′]
+                end
             end
             # qig = sum(
             #     Σs0[g′, g] * φ[@region_index(i, g′)] +
@@ -271,7 +278,6 @@ function tally_φ!(
     segment::Segment,
     boundary_ψ::AbstractVector
 )
-
     NGroups = ngroups(prob)
     @unpack φ, q = sol
     @unpack quadrature = prob
@@ -283,7 +289,7 @@ function tally_φ!(
     a = track.azim_idx
     n_polar_2 = npolar2(polar)
 
-    # TODO: es este el mejor orden posible?
+    # TODO: is this the best possible loop order?
     for p in 1:n_polar_2, g in 1:NGroups
         pg = @reduced_angular_index(p, g)
         ig = @region_index(i, g)
@@ -322,7 +328,7 @@ function set_start_boundary_ψ!(
     t = universal_id(next_track)
     d = Int32(next_track_dir)
 
-    # TODO: es este el mejor orden posible?
+    # TODO: is this the best possible loop order?
     for p in 1:n_polar_2, g in 1:NGroups
         tdpg = @angular_index(t, d, p, g)
         pg = @reduced_angular_index(p, g)
@@ -359,11 +365,8 @@ end
 function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
-    @unpack keff, φ, φ_prev = sol
+    @unpack keff, φ, Q = sol
     @unpack xss, fsr_tag = prob
-
-    # calculamos la fuente total (integrada en energia g) para cada celda i (fuente new y
-    # old). Podriamos almacenar la new y dejarla como old para la siguiente pasada...
 
     ϵ = zero(T)
     for i in 1:NRegions
@@ -371,35 +374,40 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
         idx = fsr_tag[i]
         xs = xss[idx]
 
+        old_qi = Q[i]
+
         new_qi = zero(T)
-        old_qi = zero(T)
+        # old_qi = zero(T)
 
         @unpack νΣf, Σs0 = xs
+        fissionable = isfissionable(xs)
 
         # total fission source in each region (χ sum 1 when ∫ in g)
-        for g′ in 1:NGroups
-            ig′ = @region_index(i, g′)
-            νΣfg′ = νΣf[g′]
-            new_qi += νΣfg′ * φ[ig′]
-            old_qi += νΣfg′ * φ_prev[ig′]
+        if fissionable
+            for g′ in 1:NGroups
+                ig′ = @region_index(i, g′)
+                νΣfg′ = νΣf[g′]
+                new_qi += νΣfg′ * φ[ig′]
+            end
+            # new_qi = sum(νΣf[g′] * φ[ig′] for g′ in 1:NGroups)
         end
-        # new_qi = sum(νΣf[g′] * φ[ig′] for g′ in 1:NGroups)
-        # old_qi = sum(νΣf[g′] * φ_pre[ig′] for g′ in 1:NGroups)
 
         new_qi /= keff
-        old_qi /= keff
+        # old_qi /= keff
 
         # total scattering source
         for g in 1:NGroups, g′ in 1:NGroups
             ig′ = @region_index(i, g′)
             Σsgg′ = Σs0[g′, g]
-            old_qi += Σsgg′ * φ[ig′]
-            new_qi += Σsgg′ * φ_prev[ig′]
+            new_qi += Σsgg′ * φ[ig′]
         end
+
 
         if old_qi > 0
             ϵ += ((new_qi - old_qi) / old_qi)^2
         end
+
+        Q[i] = new_qi
     end
 
     ϵ = sqrt(ϵ / NRegions)

@@ -1,41 +1,79 @@
 # IDEA: We can use lazy_map or map to extend each cross section as a function of position
-struct CrossSections{G,T,T1<:Union{Vector{T},SVector{G,T}},T2<:Union{Matrix{T},SMatrix{G,G,T}}}
+struct CrossSections{G,F,T,T1<:Union{Vector{T},SVector{G,T}},T2<:Union{Matrix{T},SMatrix{G,G,T}}}
     name:: String
-    D   :: T1
-    S   :: T1
     χ   :: T1
     Σt  :: T1
-    Σa  :: T1
     νΣf :: T1
-    eΣf :: T1
     Σs0 :: T2
-    Σs1 :: T2
+
+    # D   :: T1
+    # S   :: T1
+    # Σa  :: T1
+    # eΣf :: T1
+    # Σs1 :: T2
 end
 
 const XSs = CrossSections
 
-ngroups(::CrossSections{NGroups}) where {NGroups} = NGroups
-eltype(::CrossSections{NGroups,T}) where {NGroups,T} = T
+ngroups(::CrossSections{G}) where {G} = G
+isfissionable(::CrossSections{G,F}) where {G,F} = F
+eltype(::CrossSections{G,F,T}) where {G,F,T} = T
 
 function CrossSections(
     name::String,
     G::Integer;
-    D=zeros(G), S=zeros(G), χ=zeros(G),
-    Σt=zeros(G), Σa=zeros(G), νΣf=zeros(G), eΣf=zeros(G), Σs0=zeros(G, G), Σs1=zeros(G, G)
+
+    # for future diffusion discretization
+    # D = nothing,
+
+    # not yet used
+    # S = nothing,
+
+    Σt = error("Σt has no default, supply it with keyword."),
+    Σs0 = error("Σs0 has no default, supply it with keyword."),
+    # Σa = nothing, # IDEA: can be computed using Σt and Σs0
+
+    # assume not fissionable material
+    νΣf = zeros(promote_type(eltype.((Σt, Σs0))...), G),
+    χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), G),
+
+    # for future implementations (?)
+    # Σs1 = nothing
 )
-    # TODO: check que se cumplan las relaciones necesarias, ej: Σt no es indep. de Σa y Σs
-    # TODO: check que se provean las necesarias si o si.
-    # TODO: si hay al menos un SArray, convertir todos a ese tipo.
-    # TODO: check correct sizes of all objects
-    T = eltype(Σt)
-    T1 = typeof(Σt)
-    T2 = typeof(Σs0)
-    if iszero(sum(χ))
-        χ[begin] = one(eltype(χ))
+
+    if iszero(sum(νΣf))
+        F = false
+        fill!(χ, zero(eltype(χ)))
     else
-        if !isone(sum(χ))
-            error("χ does not add up to 1.")
+        F = true
+        if iszero(sum(χ))
+            χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), G)
+            χ[1] = 1
+        else
+            if !isone(sum(χ))
+                error("χ *must* add up to 1.")
+            end
         end
     end
-    return CrossSections{G,T,T1,T2}(name, D, S, χ, Σt, Σa, νΣf, eΣf, Σs0, Σs1)
+
+    χ, Σt, νΣf = promote(χ, Σt, νΣf)
+
+    if eltype(Σs0) != eltype(χ)
+        T = promote_type(eltype.(χ, Σs0))
+
+        # TODO: convert everything to share element type here y object type (SArray or Array)
+
+        # then, get the types
+        T1 = typeof(χ)
+        T2 = typeof(Σs0)
+    else
+        T = eltype(χ)
+
+        # TODO: convert to share object type (SArray or Array) or ar least make sure they match
+
+        T1 = typeof(χ)
+        T2 = typeof(Σs0)
+    end
+
+    return CrossSections{G,F,T,T1,T2}(name, χ, Σt, νΣf, Σs0)
 end
