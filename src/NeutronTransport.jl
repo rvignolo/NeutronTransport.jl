@@ -10,8 +10,6 @@ using Gridap.Geometry: get_face_tag, get_tag_from_name
 
 import Base: show, eltype
 
-include("cross_section.jl")
-
 abstract type TransportFormulation end
 
 struct MethodOfCharacteristics <: TransportFormulation end
@@ -23,6 +21,7 @@ const MoC = MethodOfCharacteristics
 const CP = CollisionProbability
 const SN = DiscreteOrdinates
 
+include("cross_section.jl")
 include("polar_quad.jl")
 include("quadrature.jl")
 

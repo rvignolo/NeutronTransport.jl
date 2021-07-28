@@ -17,7 +17,7 @@ struct MoCSolution{T<:Real,P<:MoCProblem} <: TransportSolution
     # reduced source
     q::Vector{T}
 
-    # total source (integrated in energy given per region) is used for convergence purposes
+    # total source (integrated in energy given per region) used for convergence purposes
     Q::Vector{T}
 
     # angular flux at boundary
@@ -375,9 +375,7 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
         xs = xss[idx]
 
         old_qi = Q[i]
-
         new_qi = zero(T)
-        # old_qi = zero(T)
 
         @unpack νΣf, Σs0 = xs
         fissionable = isfissionable(xs)
@@ -393,7 +391,6 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
         end
 
         new_qi /= keff
-        # old_qi /= keff
 
         # total scattering source
         for g in 1:NGroups, g′ in 1:NGroups
@@ -401,7 +398,6 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
             Σsgg′ = Σs0[g′, g]
             new_qi += Σsgg′ * φ[ig′]
         end
-
 
         if old_qi > 0
             ϵ += ((new_qi - old_qi) / old_qi)^2

@@ -1,7 +1,7 @@
 name = "NeutronTransport"
 uuid = "161f4978-d3bb-4696-90f4-058341551711"
 authors = ["Ramiro Vignolo <ramirovignolo@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 Gridap = "56d4f2e9-7ea1-5844-9cf6-b9c51ca7ce8e"
