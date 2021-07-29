@@ -70,8 +70,8 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real
     optical_length!(prob)
 
     @set! sol.keff = one(T)
-    set_uniform_Q!(sol, zero(T))
     set_uniform_φ!(sol, one(T))
+    set_uniform_Q!(sol, zero(T))
     set_uniform_start_boundary_ψ!(sol, zero(T))
     update_boundary_ψ!(sol)
 
@@ -86,7 +86,7 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real
         @set! sol.keff *= total_fission_source(sol, prob)
         ϵ = residual(sol, prob)
 
-        debug && @info "iteration $(iter)" sol.keff ϵ
+        debug && iszero(iter % 10) && @info "iteration $(iter)" sol.keff ϵ
 
         # we need at least three iterations:
         #  0. boundary conditions do not exists (unless everything is vaccum)
@@ -119,27 +119,22 @@ end
 
 function _optical_length!(prob::MoCProblem, track::Track)
     NGroups = ngroups(prob)
-    @unpack xss, fsr_tag = prob
 
     for segment in track.segments
         @unpack ℓ, τ = segment
 
         resize!(τ, NGroups)
 
-        i = segment.element
-        idx = fsr_tag[i]
-        xs = xss[idx]
-
+        xs = getxs(prob, segment.element)
         @unpack Σt = xs
-
-        for g in 1:NGroups
+        @inbounds for g in 1:NGroups
             τ[g] = Σt[g] * ℓ
         end
     end
 end
 
-@inline set_uniform_Q!(sol::MoCSolution, Q::Real) = fill!(sol.Q, Q)
 @inline set_uniform_φ!(sol::MoCSolution, φ::Real) = fill!(sol.φ, φ)
+@inline set_uniform_Q!(sol::MoCSolution, Q::Real) = fill!(sol.Q, Q)
 @inline set_uniform_start_boundary_ψ!(sol::MoCSolution, ψ::Real) = fill!(sol.start_boundary_ψ, ψ)
 @inline update_boundary_ψ!(sol::MoCSolution) = copy!(sol.boundary_ψ, sol.start_boundary_ψ)
 
@@ -162,15 +157,12 @@ function total_fission_source(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack φ = sol
-    @unpack trackgenerator, xss, fsr_tag = prob
+    @unpack trackgenerator = prob
     @unpack volumes = trackgenerator
 
     qft = zero(T)
-    for i in 1:NRegions
-
-        idx = fsr_tag[i]
-        xs = xss[idx]
-
+    @inbounds for i in 1:NRegions
+        xs = getxs(prob, i)
         @unpack νΣf = xs
         fissionable = isfissionable(xs)
 
@@ -192,13 +184,9 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack keff, φ, q = sol
-    @unpack xss, fsr_tag = prob
 
-    for i in 1:NRegions
-
-        idx = fsr_tag[i]
-        xs = xss[idx]
-
+    @inbounds for i in 1:NRegions
+        xs = getxs(prob, i)
         @unpack χ, Σt, νΣf, Σs0 = xs
         fissionable = isfissionable(xs)
 
@@ -290,7 +278,7 @@ function tally_φ!(
     n_polar_2 = npolar2(polar)
 
     # TODO: is this the best possible loop order?
-    for p in 1:n_polar_2, g in 1:NGroups
+    @inbounds for g in 1:NGroups, p in 1:n_polar_2
         pg = @reduced_angular_index(p, g)
         ig = @region_index(i, g)
         Δψ = (boundary_ψ[pg] - q[ig]) * (1 - exp(-τ[g] / sinθs[p]))
@@ -329,7 +317,7 @@ function set_start_boundary_ψ!(
     d = Int32(next_track_dir)
 
     # TODO: is this the best possible loop order?
-    for p in 1:n_polar_2, g in 1:NGroups
+    @inbounds for g in 1:NGroups, p in 1:n_polar_2
         tdpg = @angular_index(t, d, p, g)
         pg = @reduced_angular_index(p, g)
         start_boundary_ψ[tdpg] = flag ? boundary_ψ[pg] : zero(T)
@@ -342,14 +330,11 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack φ, q = sol
-    @unpack trackgenerator, xss, fsr_tag = prob
+    @unpack trackgenerator = prob
     @unpack volumes = trackgenerator
 
-    for i in 1:NRegions
-
-        idx = fsr_tag[i]
-        xs = xss[idx]
-
+    @inbounds for i in 1:NRegions
+        xs = getxs(prob, i)
         @unpack Σt = xs
 
         for g in 1:NGroups
@@ -366,19 +351,16 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack keff, φ, Q = sol
-    @unpack xss, fsr_tag = prob
 
     ϵ = zero(T)
-    for i in 1:NRegions
+    @inbounds for i in 1:NRegions
 
-        idx = fsr_tag[i]
-        xs = xss[idx]
+        xs = getxs(prob, i)
+        @unpack νΣf, Σs0 = xs
+        fissionable = isfissionable(xs)
 
         old_qi = Q[i]
         new_qi = zero(T)
-
-        @unpack νΣf, Σs0 = xs
-        fissionable = isfissionable(xs)
 
         # total fission source in each region (χ sum 1 when ∫ in g)
         if fissionable

@@ -1,10 +1,15 @@
 # IDEA: We can use lazy_map or map to extend each cross section as a function of position
-struct CrossSections{G,F,T,T1<:Union{Vector{T},SVector{G,T}},T2<:Union{Matrix{T},SMatrix{G,G,T}}}
-    name:: String
-    χ   :: T1
-    Σt  :: T1
-    νΣf :: T1
-    Σs0 :: T2
+struct CrossSections{
+    NGroups,elType,
+    T<:Union{Vector{elType},SVector{NGroups,elType}},
+    S<:Union{Matrix{elType},SMatrix{NGroups,NGroups,elType}}
+}
+    name::String
+    χ::T
+    Σt::T
+    νΣf::T
+    Σs0::S
+    fissionable::Bool
 
     # D   :: T1
     # S   :: T1
@@ -12,16 +17,15 @@ struct CrossSections{G,F,T,T1<:Union{Vector{T},SVector{G,T}},T2<:Union{Matrix{T}
     # eΣf :: T1
     # Σs1 :: T2
 end
-
 const XSs = CrossSections
 
-ngroups(::CrossSections{G}) where {G} = G
-isfissionable(::CrossSections{G,F}) where {G,F} = F
-eltype(::CrossSections{G,F,T}) where {G,F,T} = T
+ngroups(::CrossSections{NGroups}) where {NGroups} = NGroups
+eltype(::CrossSections{NGroups,elType}) where {NGroups,elType} = elType
+isfissionable(xs::CrossSections) = xs.fissionable
 
 function CrossSections(
     name::String,
-    G::Integer;
+    NGroups::Integer;
 
     # for future diffusion discretization
     # D = nothing,
@@ -34,20 +38,20 @@ function CrossSections(
     # Σa = nothing, # IDEA: can be computed using Σt and Σs0
 
     # assume not fissionable material
-    νΣf = zeros(promote_type(eltype.((Σt, Σs0))...), G),
-    χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), G),
+    νΣf = zeros(promote_type(eltype.((Σt, Σs0))...), NGroups),
+    χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), NGroups),
 
     # for future implementations (?)
     # Σs1 = nothing
 )
 
     if iszero(sum(νΣf))
-        F = false
+        fissionable = false
         fill!(χ, zero(eltype(χ)))
     else
-        F = true
+        fissionable = true
         if iszero(sum(χ))
-            χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), G)
+            χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), NGroups)
             χ[1] = 1
         else
             if !isone(sum(χ))
@@ -59,21 +63,21 @@ function CrossSections(
     χ, Σt, νΣf = promote(χ, Σt, νΣf)
 
     if eltype(Σs0) != eltype(χ)
-        T = promote_type(eltype.(χ, Σs0))
+        elType = promote_type(eltype.(χ, Σs0))
 
         # TODO: convert everything to share element type here y object type (SArray or Array)
 
         # then, get the types
-        T1 = typeof(χ)
-        T2 = typeof(Σs0)
+        T = typeof(χ)
+        S = typeof(Σs0)
     else
-        T = eltype(χ)
+        elType = eltype(χ)
 
         # TODO: convert to share object type (SArray or Array) or ar least make sure they match
 
-        T1 = typeof(χ)
-        T2 = typeof(Σs0)
+        T = typeof(χ)
+        S = typeof(Σs0)
     end
 
-    return CrossSections{G,F,T,T1,T2}(name, χ, Σt, νΣf, Σs0)
+    return CrossSections{NGroups,elType,T,S}(name, χ, Σt, νΣf, Σs0, fissionable)
 end
