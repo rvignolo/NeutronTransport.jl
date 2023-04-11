@@ -41,5 +41,7 @@ export TabuchiYamamoto, GaussLegendre
 export CrossSections
 export MoCProblem
 export solve
+export set_fixed_source_fsr
+export set_fixed_source_material
 
 end

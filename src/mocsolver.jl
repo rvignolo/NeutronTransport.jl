@@ -59,11 +59,17 @@ function solve(
     prob::MoCProblem;
     max_iterations::Int=1000, max_residual::Real=1e-7, debug::Bool=false
 )
-    return _solve_eigenvalue_problem(prob, max_iterations, max_residual, debug)
+    return _solve(prob, max_iterations, max_residual, debug)
 end
 
-function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real, debug::Bool)
+function solve(
+    prob::MoCProblem, fixed_sources::Matrix{Float64};
+    max_iterations::Int=1000, max_residual::Real=1e-7, debug::Bool=false
+)
+    return _solve(prob, fixed_sources, max_iterations, max_residual, debug)
+end
 
+function _solve(prob::MoCProblem, max_iter::Int, max_ϵ::Real, debug::Bool)
     T =  eltype(prob)
     sol = MoCSolution{T}(prob)
 
@@ -84,7 +90,7 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real
         compute_q!(sol, prob)
         compute_φ!(sol, prob)
         @set! sol.keff *= total_fission_source(sol, prob)
-        ϵ = residual(sol, prob)
+        ϵ = residual_Q(sol, prob)
 
         debug && iszero(iter % 10) && @info "iteration $(iter)" sol.keff ϵ
 
@@ -97,6 +103,49 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real
             break
         end
 
+        iter += 1
+    end
+
+    @set! sol.residual = ϵ
+    @set! sol.iterations = iter
+
+    return sol
+end
+
+function _solve(prob::MoCProblem, fixed_sources::Matrix{Float64}, max_iter::Int, max_ϵ::Real, debug::Bool)
+    T =  eltype(prob)
+    sol = MoCSolution{T}(prob)
+
+    optical_length!(prob)
+
+    @set! sol.keff = one(T)
+    set_uniform_φ!(sol, one(T))
+    set_uniform_Q!(sol, zero(T))
+    set_uniform_start_boundary_ψ!(sol, zero(T))
+    update_boundary_ψ!(sol)
+
+    debug && @info "MoC iterations start..."
+    ϵ = 0.
+    iter = 0
+    _old_φ = fill(1e-10, size(sol.φ))
+    while iter < max_iter
+
+        # normalize_fluxes!(sol, prob)
+        compute_q!(sol, prob, fixed_sources)
+        compute_φ!(sol, prob)
+        # @set! sol.keff *= total_fission_source(sol, prob)
+        ϵ = residual_φ(sol, prob, _old_φ)
+        _old_φ = deepcopy(sol.φ)
+        debug && iszero(iter % 10) && @info "iteration $(iter)" sol.keff ϵ
+
+        # we need at least three iterations:
+        #  0. boundary conditions do not exists (unless everything is vaccum)
+        #  1. we can compute a residual but it is not correct (previous iteration is fruit)
+        #  2. now we can compute a correct residual
+
+        if iter > 1 && isless(ϵ, max_ϵ)
+            break
+        end
         iter += 1
     end
 
@@ -205,8 +254,44 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
             #     1 / keff * χ[g] * νΣf[g′] * φ[@region_index(i, g′)]
             #     for g′ in 1:NGroups
             # )
+            qig /= 4π
+            q[ig] = qig
+        end
+    end
 
-            qig /= (4π * Σt[g])
+    return nothing
+end
+
+function compute_q!(sol::MoCSolution{T}, prob::MoCProblem, fixed_sources::Matrix{Float64}) where {T}
+    NGroups = ngroups(prob)
+    NRegions = nregions(prob)
+    @unpack keff, φ, q = sol
+
+    @inbounds for i in 1:NRegions
+        xs = getxs(prob, i)
+        @unpack χ, Σt, νΣf, Σs0 = xs
+        fissionable = isfissionable(xs)
+
+        for g in 1:NGroups
+            ig = @region_index(i, g)
+            qig = zero(T)
+            for g′ in 1:NGroups
+                ig′ = @region_index(i, g′)
+                qig += Σs0[g′, g] * φ[ig′]
+                if fissionable
+                    qig += 1 / keff * χ[g] * νΣf[g′] * φ[ig′]
+                end
+            end
+            # qig = sum(
+            #     Σs0[g′, g] * φ[@region_index(i, g′)] +
+            #     1 / keff * χ[g] * νΣf[g′] * φ[@region_index(i, g′)]
+            #     for g′ in 1:NGroups
+            # )
+            qig += fixed_sources[i,g]
+            qig /= 4π 
+            if qig < 0.0
+                qig = 1e-10
+            end
             q[ig] = qig
         end
     end
@@ -336,18 +421,23 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
     @inbounds for i in 1:NRegions
         xs = getxs(prob, i)
         @unpack Σt = xs
-
+        if volumes[i] < 1e-12 # deal with zero volume FSRs
+            volumes[i] = 1e30
+        end
         for g in 1:NGroups
             ig = @region_index(i, g)
             φ[ig] /= (Σt[g] * volumes[i])
-            φ[ig] += (4π * q[ig])
+            φ[ig] += (4π * q[ig]) / Σt[g]
+            if φ[ig] < 0.0
+                φ[ig] = 1e-10
+            end
         end
     end
 
     return nothing
 end
 
-function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
+function residual_Q(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack keff, φ, Q = sol
@@ -391,4 +481,73 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     ϵ = sqrt(ϵ / NRegions)
 
     return ϵ
+end
+
+function residual_φ(sol::MoCSolution{T}, prob::MoCProblem, _old_φ::Vector{Float64}) where {T}
+    NGroups = ngroups(prob)
+    NRegions = nregions(prob)
+    @unpack keff, φ, Q = sol
+
+    ϵ = zero(T)
+    reference_φ = _old_φ
+
+    @inbounds for i in 1:NRegions
+        for g in 1:NGroups
+            ig = @region_index(i, g)
+            if reference_φ[ig] > 0
+                ϵ += ((φ[ig] - reference_φ[ig]) / reference_φ[ig]) ^ 2
+            end
+        end
+    end
+
+    ϵ = sqrt(ϵ / NRegions)
+    return ϵ
+end
+
+function set_fixed_source_fsr(prob::MoCProblem, i::Int64, g::Int64, source::Real)
+    NGroups = ngroups(prob)
+    NRegions = nregions(prob)
+    
+    if g <= 0 || g > NGroups
+        error("Unable to set fixed source for group ", g, " in a ", NGroups, 
+              " energy group problem")
+    end
+    
+    if i < 0 || i >= NRegions
+        error("Unable to set fixed source for FSR ", i, " with only ", NRegions, 
+              " FSRs in the geometry")
+    end
+    
+    fixed_sources = zeros(NRegions, NGroups)
+    fixed_sources[i, g] = source
+    return fixed_sources
+end
+
+function set_fixed_source_material(prob::MoCProblem, m::String, g::Int64, source::Real)
+    NGroups = ngroups(prob)
+    NRegions = nregions(prob)
+
+    @unpack xss, fsr_tag = prob
+
+    if g <= 0 || g > NGroups
+        error("Unable to set fixed source for group ", g, " in a ", NGroups, 
+              " energy group problem")
+    end
+
+    fixed_sources = zeros(NRegions, NGroups)
+    for (m_idx, xs) in enumerate(xss)
+        if xs.name == m
+            for (i, tag) in enumerate(fsr_tag)
+                if tag == m_idx
+                    fixed_sources[i, g] = source
+                end
+            end
+        end
+    end
+
+    if fixed_sources == zeros(NRegions, NGroups)
+        error(m, " not found in problem materials")
+    end
+
+    return fixed_sources
 end
