@@ -63,7 +63,7 @@ function solve(
 end
 
 function solve(
-    prob::MoCProblem, fixed_sources::Matrix{Float64};
+    prob::MoCProblem, fixed_sources::Matrix{T} where {T};
     max_iterations::Int=1000, max_residual::Real=1e-7, debug::Bool=false
 )
     return _solve(prob, fixed_sources, max_iterations, max_residual, debug)
@@ -112,7 +112,7 @@ function _solve(prob::MoCProblem, max_iter::Int, max_ϵ::Real, debug::Bool)
     return sol
 end
 
-function _solve(prob::MoCProblem, fixed_sources::Matrix{Float64}, max_iter::Int, max_ϵ::Real, debug::Bool)
+function _solve(prob::MoCProblem, fixed_sources::Matrix, max_iter::Int, max_ϵ::Real, debug::Bool)
     T =  eltype(prob)
     sol = MoCSolution{T}(prob)
 
@@ -125,9 +125,9 @@ function _solve(prob::MoCProblem, fixed_sources::Matrix{Float64}, max_iter::Int,
     update_boundary_ψ!(sol)
 
     debug && @info "MoC iterations start..."
-    ϵ = 0.
+    ϵ = zero(Float64)
     iter = 0
-    _old_φ = fill(1e-10, size(sol.φ))
+    _old_φ = zero(sol.φ)
     while iter < max_iter
 
         # normalize_fluxes!(sol, prob)
@@ -254,7 +254,7 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
             #     1 / keff * χ[g] * νΣf[g′] * φ[@region_index(i, g′)]
             #     for g′ in 1:NGroups
             # )
-            qig /= 4π
+            qig /= (4π * Σt[g])
             q[ig] = qig
         end
     end
@@ -262,7 +262,7 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     return nothing
 end
 
-function compute_q!(sol::MoCSolution{T}, prob::MoCProblem, fixed_sources::Matrix{Float64}) where {T}
+function compute_q!(sol::MoCSolution{T}, prob::MoCProblem, fixed_sources::Matrix{T}) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack keff, φ, q = sol
@@ -288,7 +288,7 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem, fixed_sources::Matrix
             #     for g′ in 1:NGroups
             # )
             qig += fixed_sources[i,g]
-            qig /= 4π 
+            qig /= (4π * Σt[g])
             if qig < 0.0
                 qig = 1e-10
             end
@@ -427,7 +427,7 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
         for g in 1:NGroups
             ig = @region_index(i, g)
             φ[ig] /= (Σt[g] * volumes[i])
-            φ[ig] += (4π * q[ig]) / Σt[g]
+            φ[ig] += (4π * q[ig]) 
             if φ[ig] < 0.0
                 φ[ig] = 1e-10
             end
@@ -483,7 +483,7 @@ function residual_Q(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     return ϵ
 end
 
-function residual_φ(sol::MoCSolution{T}, prob::MoCProblem, _old_φ::Vector{Float64}) where {T}
+function residual_φ(sol::MoCSolution{T}, prob::MoCProblem, _old_φ::Vector{T}) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack keff, φ, Q = sol
