@@ -79,5 +79,7 @@ function CrossSections(
         S = typeof(Σs0)
     end
 
+    Σt[broadcast(abs, Σt) .<= 1e-6] .= 1e-6
+
     return CrossSections{NGroups,elType,T,S}(name, χ, Σt, νΣf, Σs0, fissionable)
 end
