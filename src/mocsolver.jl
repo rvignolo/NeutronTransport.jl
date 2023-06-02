@@ -290,7 +290,7 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem, fixed_sources::Matrix
             qig += fixed_sources[i,g]
             qig /= (4π * Σt[g])
             if qig < 0.0
-                qig = 1e-10
+                qig = 1e-12
             end
             q[ig] = qig
         end
@@ -429,7 +429,7 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
             φ[ig] /= (Σt[g] * volumes[i])
             φ[ig] += (4π * q[ig]) 
             if φ[ig] < 0.0
-                φ[ig] = 1e-10
+                φ[ig] = 1e-12
             end
         end
     end
