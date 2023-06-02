@@ -422,7 +422,7 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
         xs = getxs(prob, i)
         @unpack Σt = xs
         if volumes[i] < 1e-12 # deal with zero volume FSRs
-            volumes[i] = 1e30
+            volumes[i] = 1e-12
         end
         for g in 1:NGroups
             ig = @region_index(i, g)
