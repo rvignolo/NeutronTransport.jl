@@ -289,9 +289,7 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem, fixed_sources::Matrix
             # )
             qig += fixed_sources[i,g]
             qig /= (4π * Σt[g])
-            if qig < MIN_q
-                qig = MIN_q
-            end
+            qig = qig < MIN_q ? MIN_q : qig
             q[ig] = qig
         end
     end
@@ -421,16 +419,13 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
     @inbounds for i in 1:NRegions
         xs = getxs(prob, i)
         @unpack Σt = xs
-        if volumes[i] < MIN_VOLUME # deal with zero volume FSRs
-            volumes[i] = MIN_VOLUME
-        end
+        volume = volumes[i]
+        volume = volume < MIN_VOLUME ? 1e30 : volume
         for g in 1:NGroups
             ig = @region_index(i, g)
-            φ[ig] /= (Σt[g] * volumes[i])
+            φ[ig] /= (Σt[g] * volume)
             φ[ig] += (4π * q[ig]) 
-            if φ[ig] < MIN_φ
-                φ[ig] = MIN_φ
-            end
+            φ[ig] = φ[ig] < MIN_φ ? MIN_φ : φ[ig]
         end
     end
 
