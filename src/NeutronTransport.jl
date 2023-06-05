@@ -20,6 +20,10 @@ struct Diffusion <: TransportFormulation end
 const MoC = MethodOfCharacteristics
 const CP = CollisionProbability
 const SN = DiscreteOrdinates
+const MIN_VOLUME = 1e-12 
+const MIN_q = 1e-12 
+const MIN_φ = 1e-12 
+const MIN_Σt = 1e-6
 
 include("cross_section.jl")
 include("polar_quad.jl")

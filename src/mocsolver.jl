@@ -125,7 +125,7 @@ function _solve(prob::MoCProblem, fixed_sources::Matrix, max_iter::Int, max_ϵ::
     update_boundary_ψ!(sol)
 
     debug && @info "MoC iterations start..."
-    ϵ = zero(Float64)
+    ϵ = Inf
     iter = 0
     _old_φ = zero(sol.φ)
     while iter < max_iter
@@ -289,8 +289,8 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem, fixed_sources::Matrix
             # )
             qig += fixed_sources[i,g]
             qig /= (4π * Σt[g])
-            if qig < 0.0
-                qig = 1e-12
+            if qig < MIN_q
+                qig = MIN_q
             end
             q[ig] = qig
         end
@@ -421,15 +421,15 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
     @inbounds for i in 1:NRegions
         xs = getxs(prob, i)
         @unpack Σt = xs
-        if volumes[i] < 1e-12 # deal with zero volume FSRs
-            volumes[i] = 1e-12
+        if volumes[i] < MIN_VOLUME # deal with zero volume FSRs
+            volumes[i] = MIN_VOLUME
         end
         for g in 1:NGroups
             ig = @region_index(i, g)
             φ[ig] /= (Σt[g] * volumes[i])
             φ[ig] += (4π * q[ig]) 
-            if φ[ig] < 0.0
-                φ[ig] = 1e-12
+            if φ[ig] < MIN_φ
+                φ[ig] = MIN_φ
             end
         end
     end
