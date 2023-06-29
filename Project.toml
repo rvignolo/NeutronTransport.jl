@@ -1,7 +1,7 @@
 name = "NeutronTransport"
 uuid = "161f4978-d3bb-4696-90f4-058341551711"
 authors = ["Ramiro Vignolo <ramirovignolo@gmail.com>"]
-version = "0.2.0"
+version = "0.2.1"
 
 [deps]
 Gridap = "56d4f2e9-7ea1-5844-9cf6-b9c51ca7ce8e"
@@ -10,15 +10,6 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 Setfield = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
-
-[compat]
-Gridap = "0.15"
-RayTracing = "0.2"
-Reexport = "0.2, 1.0"
-Setfield = "0.7"
-StaticArrays = "1.0"
-UnPack = "1.0"
-julia = "1.5"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
