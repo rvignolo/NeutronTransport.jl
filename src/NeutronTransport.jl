@@ -20,6 +20,10 @@ struct Diffusion <: TransportFormulation end
 const MoC = MethodOfCharacteristics
 const CP = CollisionProbability
 const SN = DiscreteOrdinates
+const MIN_VOLUME = 1e-12 
+const MIN_q = 1e-12 
+const MIN_φ = 1e-12 
+const MIN_Σt = 1e-6
 
 include("cross_section.jl")
 include("polar_quad.jl")
@@ -41,5 +45,7 @@ export TabuchiYamamoto, GaussLegendre
 export CrossSections
 export MoCProblem
 export solve
+export set_fixed_source_fsr
+export set_fixed_source_material
 
 end
