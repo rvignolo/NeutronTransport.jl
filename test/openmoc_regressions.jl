@@ -91,3 +91,23 @@ end
     @test isfinite(sol.residual)
     @test all(isfinite, sol.φ)
 end
+
+@testset "OpenMOC-style 4x4 simple lattice material parity" begin
+    expected = openmoc_simple_lattice_expected_volumes()
+    prob, tg = openmoc_simple_lattice_problem(; coalesce_materials=true)
+    sol = solve(prob; max_iterations=120, max_residual=1e-5)
+
+    fuel_fsr = findfirst(==(Int32(1)), prob.fsr_tag)
+    water_fsr = findfirst(==(Int32(2)), prob.fsr_tag)
+
+    @test prob.fsr_tag == Int32[1, 2]
+    @test count(==(1), prob.cell_to_fsr) > 0
+    @test count(==(2), prob.cell_to_fsr) > 0
+    @test prob.volumes[fuel_fsr] ≈ expected.fuel rtol = 5e-2
+    @test prob.volumes[water_fsr] ≈ expected.water rtol = 5e-2
+    @test sum(prob.volumes) ≈ expected.total
+    @test sum(tg.volumes) ≈ expected.total
+    @test isfinite(sol.keff)
+    @test isfinite(sol.residual)
+    @test all(isfinite, sol.φ)
+end

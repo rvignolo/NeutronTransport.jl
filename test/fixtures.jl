@@ -193,6 +193,92 @@ function openmoc_pin_cell_model(; lc=0.18)
     return GmshDiscreteModel(mshfile; renumber=true)
 end
 
+function openmoc_simple_lattice_radii()
+    # OpenMOC SimpleLatticeInput uses this repeated 2x2 assembly:
+    # [large medium; large small], tiled into a 2x2 core.
+    return [
+        0.4 0.3 0.4 0.3;
+        0.4 0.2 0.4 0.2;
+        0.4 0.3 0.4 0.3;
+        0.4 0.2 0.4 0.2;
+    ]
+end
+
+function openmoc_simple_lattice_expected_volumes()
+    radii = openmoc_simple_lattice_radii()
+    fuel = π * sum(abs2, radii)
+    total = 16.0
+    return (; fuel, water=total - fuel, total)
+end
+
+function openmoc_simple_lattice_model(; lc=0.16)
+    dir = mktempdir()
+    mshfile = joinpath(dir, "openmoc-simple-lattice.msh")
+
+    gmsh.initialize()
+    try
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add("openmoc-simple-lattice")
+        factory = gmsh.model.geo
+
+        radii = openmoc_simple_lattice_radii()
+        centers = (-1.5, -0.5, 0.5, 1.5)
+        fuel_surfaces = Int[]
+        fuel_loops = Int[]
+
+        for (iy, y) in enumerate(centers), (ix, x) in enumerate(centers)
+            radius = radii[iy, ix]
+            center = factory.addPoint(x, y, 0.0, lc)
+            right = factory.addPoint(x + radius, y, 0.0, lc)
+            top = factory.addPoint(x, y + radius, 0.0, lc)
+            left = factory.addPoint(x - radius, y, 0.0, lc)
+            bottom = factory.addPoint(x, y - radius, 0.0, lc)
+
+            c1 = factory.addCircleArc(right, center, top)
+            c2 = factory.addCircleArc(top, center, left)
+            c3 = factory.addCircleArc(left, center, bottom)
+            c4 = factory.addCircleArc(bottom, center, right)
+            loop = factory.addCurveLoop([c1, c2, c3, c4])
+            push!(fuel_loops, loop)
+            push!(fuel_surfaces, factory.addPlaneSurface([loop]))
+        end
+
+        p1 = factory.addPoint(-2.0, -2.0, 0.0, lc)
+        p2 = factory.addPoint(2.0, -2.0, 0.0, lc)
+        p3 = factory.addPoint(2.0, 2.0, 0.0, lc)
+        p4 = factory.addPoint(-2.0, 2.0, 0.0, lc)
+
+        bottom_line = factory.addLine(p1, p2)
+        right_line = factory.addLine(p2, p3)
+        top_line = factory.addLine(p3, p4)
+        left_line = factory.addLine(p4, p1)
+        moderator_loop = factory.addCurveLoop([bottom_line, right_line, top_line, left_line])
+        moderator = factory.addPlaneSurface([moderator_loop; fuel_loops])
+
+        fuel_group = factory.addPhysicalGroup(2, fuel_surfaces)
+        moderator_group = factory.addPhysicalGroup(2, [moderator])
+        bottom_group = factory.addPhysicalGroup(1, [bottom_line])
+        right_group = factory.addPhysicalGroup(1, [right_line])
+        top_group = factory.addPhysicalGroup(1, [top_line])
+        left_group = factory.addPhysicalGroup(1, [left_line])
+
+        gmsh.model.setPhysicalName(2, fuel_group, "UO2")
+        gmsh.model.setPhysicalName(2, moderator_group, "Water")
+        gmsh.model.setPhysicalName(1, bottom_group, "bottom")
+        gmsh.model.setPhysicalName(1, right_group, "right")
+        gmsh.model.setPhysicalName(1, top_group, "top")
+        gmsh.model.setPhysicalName(1, left_group, "left")
+
+        factory.synchronize()
+        gmsh.model.mesh.generate(2)
+        gmsh.write(mshfile)
+    finally
+        gmsh.finalize()
+    end
+
+    return GmshDiscreteModel(mshfile; renumber=true)
+end
+
 function openmoc_pin_cell_materials()
     n_groups = 7
     χ = round.([0.58791, 0.41176, 0.00033906, 1.1761e-7, 0.0, 0.0, 0.0]; digits=4)
@@ -235,6 +321,24 @@ function openmoc_pin_cell_problem(;
     )
     trace!(tg)
     segmentize!(tg)
+
+    materials = openmoc_pin_cell_materials()
+    cell_to_fsr = coalesce_materials ? cell_material_ids(tg, materials) : nothing
+    return MoCProblem(tg, TabuchiYamamoto(n_polar), materials; cell_to_fsr=cell_to_fsr), tg
+end
+
+function openmoc_simple_lattice_problem(;
+    lc=0.16, n_azim=4, spacing=0.16, n_polar=4, coalesce_materials=false,
+    segment_rtol=1e-5
+)
+    bcs = BoundaryConditions(
+        top=Reflective, bottom=Reflective, left=Reflective, right=Reflective
+    )
+    tg = TrackGenerator(
+        openmoc_simple_lattice_model(; lc), n_azim, spacing; bcs=bcs, volume_correction=true
+    )
+    trace!(tg)
+    segmentize!(tg; rtol=segment_rtol)
 
     materials = openmoc_pin_cell_materials()
     cell_to_fsr = coalesce_materials ? cell_material_ids(tg, materials) : nothing
@@ -344,9 +448,9 @@ function reflected_problem(model, materials; n_azim=8, spacing=0.25, n_polar=2)
     return MoCProblem(tg, TabuchiYamamoto(n_polar), materials)
 end
 
-function demo_problem(name, materials; n_azim, spacing, n_polar=2, bcs)
+function demo_problem(name, materials; n_azim, spacing, n_polar=2, bcs, segmentize_kwargs=(;))
     tg = TrackGenerator(demo_model(name), n_azim, spacing; bcs=bcs, volume_correction=true)
     trace!(tg)
-    segmentize!(tg)
+    segmentize!(tg; segmentize_kwargs...)
     return MoCProblem(tg, TabuchiYamamoto(n_polar), materials), tg
 end
