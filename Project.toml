@@ -12,16 +12,18 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
-Gridap = ">=0.15"
-RayTracing = ">=0.2"
+Gridap = "0.19.11"
+GridapGmsh = "0.7"
+RayTracing = "0.2.4"
 Reexport = ">=0.2"
 Setfield = ">=0.7"
 StaticArrays = ">=1.0"
 UnPack = ">=1.0"
-julia = ">=1.5"
+julia = "1.10"
 
 [extras]
+GridapGmsh = "3025c34a-b394-11e9-2a55-3fee550c04c8"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["GridapGmsh", "Test"]

@@ -39,7 +39,7 @@ include("mocsolver.jl")
 
 export TabuchiYamamoto, GaussLegendre
 export CrossSections
-export MoCProblem
+export MoCProblem, cell_material_ids
 export solve
 
 end

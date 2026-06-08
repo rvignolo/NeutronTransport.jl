@@ -3,7 +3,7 @@ import RayTracing:
     DirectionType, Forward, Backward,
     universal_id, bc_fwd, bc_bwd, dir_next_track_fwd, dir_next_track_bwd
 
-# TODO: Gridap solution object might be useful for interpolation at any point in space...
+# TODO(feature): expose scalar flux as a Gridap field for interpolation and VTK output.
 struct MoCSolution{T<:Real,P<:MoCProblem} <: TransportSolution
     prob::P
 
@@ -11,16 +11,16 @@ struct MoCSolution{T<:Real,P<:MoCProblem} <: TransportSolution
     residual::T
     iterations::Int
 
-    # scalar flux
+    # Region-major scalar flux, indexed by (region, group).
     φ::Vector{T}
 
-    # reduced source
+    # Region-major reduced source, indexed by (region, group).
     q::Vector{T}
 
-    # total source (integrated in energy given per region) used for convergence purposes
+    # Region-integrated source used to compute the nonlinear iteration residual.
     Q::Vector{T}
 
-    # angular flux at boundary
+    # Boundary angular flux for all tracks, directions, polar angles, and energy groups.
     boundary_ψ::Vector{T}
     start_boundary_ψ::Vector{T}
 end
@@ -40,7 +40,7 @@ function show(io::IO, sol::MoCSolution)
     @unpack keff, residual, iterations = sol
     println(io, "  keff: ", keff)
     println(io, "  Residual: ", residual)
-    print(io,   "  Iterations: ", iterations)
+    print(io, "  Iterations: ", iterations)
 end
 
 function (sol::MoCSolution)(i::Int, g::Int)
@@ -64,10 +64,11 @@ end
 
 function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real, debug::Bool)
 
-    T =  eltype(prob)
+    T = eltype(prob)
     sol = MoCSolution{T}(prob)
 
     optical_length!(prob)
+    validate_track_volumes(prob)
 
     @set! sol.keff = one(T)
     set_uniform_φ!(sol, one(T))
@@ -88,10 +89,8 @@ function _solve_eigenvalue_problem(prob::MoCProblem, max_iter::Int, max_ϵ::Real
 
         debug && iszero(iter % 10) && @info "iteration $(iter)" sol.keff ϵ
 
-        # we need at least three iterations:
-        #  0. boundary conditions do not exists (unless everything is vaccum)
-        #  1. we can compute a residual but it is not correct (previous iteration is fruit)
-        #  2. now we can compute a correct residual
+        # The first two iterations seed boundary fluxes and the previous-source residual.
+        # After that, `Q` contains a meaningful previous iterate.
 
         if iter > 1 && isless(ϵ, max_ϵ)
             break
@@ -119,18 +118,73 @@ end
 
 function _optical_length!(prob::MoCProblem, track::Track)
     NGroups = ngroups(prob)
+    τ = optical_lengths!(prob, track)
+    attenuation = attenuation_factors!(prob, track)
+    @unpack sinθs = prob.quadrature.polar
+    n_polar_half_count = n_polar_half(prob.quadrature.polar)
 
-    for segment in track.segments
-        @unpack ℓ, τ = segment
-
-        resize!(τ, NGroups)
-
-        xs = getxs(prob, segment.element)
+    for (s, segment) in enumerate(track.segments)
+        @unpack ℓ = segment
+        xs = getxs(prob, fsr_id(prob, segment.element))
         @unpack Σt = xs
         @inbounds for g in 1:NGroups
-            τ[g] = Σt[g] * ℓ
+            τgs = Σt[g] * ℓ
+            τ[g, s] = τgs
+            for p in 1:n_polar_half_count
+                attenuation[g, p, s] = -expm1(-τgs / sinθs[p])
+            end
         end
     end
+
+    return nothing
+end
+
+function optical_lengths!(prob::MoCProblem{Dim,NRegions,NGroups,T}, track::Track) where {Dim,NRegions,NGroups,T}
+    @unpack optical_lengths = prob
+    uid = universal_id(track)
+    nsegments = length(track.segments)
+    τ = optical_lengths[uid]
+
+    if size(τ) != (NGroups, nsegments)
+        τ = Matrix{T}(undef, NGroups, nsegments)
+        optical_lengths[uid] = τ
+    end
+
+    return τ
+end
+
+function attenuation_factors!(
+    prob::MoCProblem{Dim,NRegions,NGroups,T}, track::Track
+) where {Dim,NRegions,NGroups,T}
+    @unpack attenuation_factors, quadrature = prob
+    uid = universal_id(track)
+    nsegments = length(track.segments)
+    n_polar_half_count = n_polar_half(quadrature.polar)
+    factors = attenuation_factors[uid]
+
+    if size(factors) != (NGroups, n_polar_half_count, nsegments)
+        factors = Array{T,3}(undef, NGroups, n_polar_half_count, nsegments)
+        attenuation_factors[uid] = factors
+    end
+
+    return factors
+end
+
+function validate_track_volumes(prob::MoCProblem)
+    @unpack volumes = prob
+
+    invalid = findall(v -> !isfinite(v) || v <= zero(v), volumes)
+    if !isempty(invalid)
+        n = length(invalid)
+        sample = first(invalid, min(n, 5))
+        throw(ArgumentError(
+            "transport FSR volumes must be positive and finite; found $n " *
+            "invalid volume(s), including region ids $(sample). Refine the track " *
+            "spacing or enable volume correction before solving."
+        ))
+    end
+
+    return nothing
 end
 
 @inline set_uniform_φ!(sol::MoCSolution, φ::Real) = fill!(sol.φ, φ)
@@ -141,10 +195,8 @@ end
 function normalize_fluxes!(sol::MoCSolution, prob::MoCProblem)
     @unpack φ, boundary_ψ, start_boundary_ψ = sol
 
-    # total fission source
     qft = total_fission_source(sol, prob)
 
-    # λ is the normalization factor
     λ = 1 / qft
     φ .*= λ
     boundary_ψ .*= λ
@@ -157,8 +209,7 @@ function total_fission_source(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack φ = sol
-    @unpack trackgenerator = prob
-    @unpack volumes = trackgenerator
+    @unpack volumes = prob
 
     qft = zero(T)
     @inbounds for i in 1:NRegions
@@ -171,9 +222,6 @@ function total_fission_source(sol::MoCSolution{T}, prob::MoCProblem) where {T}
                 ig′ = @region_index(i, g′)
                 qft += νΣf[g′] * φ[ig′] * volumes[i]
             end
-            # qft += sum(
-            #     νΣf[g′] * φ[@region_index(i, g′)] * volumes[i] for g′ in 1:NGroups
-            # )
         end
     end
 
@@ -200,12 +248,6 @@ function compute_q!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
                     qig += 1 / keff * χ[g] * νΣf[g′] * φ[ig′]
                 end
             end
-            # qig = sum(
-            #     Σs0[g′, g] * φ[@region_index(i, g′)] +
-            #     1 / keff * χ[g] * νΣf[g′] * φ[@region_index(i, g′)]
-            #     for g′ in 1:NGroups
-            # )
-
             qig /= (4π * Σt[g])
             q[ig] = qig
         end
@@ -219,7 +261,7 @@ function compute_φ!(sol::MoCSolution{T}, prob::MoCProblem) where {T}
     @unpack tracks_by_uid = trackgenerator
 
     set_uniform_φ!(sol, zero(T))
-    update_boundary_ψ!(sol) # update entry ψ for all rays (including d, p and g dependence)
+    update_boundary_ψ!(sol)
 
     for track in tracks_by_uid
         tally!(sol, prob, track, Forward)
@@ -235,26 +277,30 @@ function tally!(sol::MoCSolution, prob::MoCProblem, track::Track, dir::Direction
     NGroups = ngroups(prob)
     @unpack quadrature = prob
 
-    n_polar_2 = npolar2(quadrature.polar)
+    n_polar_half_count = n_polar_half(quadrature.polar)
 
     t = universal_id(track)
     d = Int32(dir)
 
     i = @angular_index(t, d, 1, 1)
-    j = i + NGroups * n_polar_2 - 1
-    boundary_ψ = @view sol.boundary_ψ[i:j] # boundary_ψ in for a given track in a given direction as function of (p, g)
+    j = i + NGroups * n_polar_half_count - 1
+    # Incoming boundary flux for one track and direction, indexed by (polar, group).
+    boundary_ψ = @view sol.boundary_ψ[i:j]
 
-    segments = dir == Forward ? track.segments : reverse!(track.segments)
+    segments = track.segments
+    attenuation = prob.attenuation_factors[t]
 
-    for segment in segments
-        tally_φ!(sol, prob, track, segment, boundary_ψ)
+    if dir == Forward
+        for s in eachindex(segments)
+            tally_φ!(sol, prob, track, segments[s], attenuation, s, boundary_ψ)
+        end
+    elseif dir == Backward
+        for s in lastindex(segments):-1:firstindex(segments)
+            tally_φ!(sol, prob, track, segments[s], attenuation, s, boundary_ψ)
+        end
     end
 
     set_start_boundary_ψ!(sol, prob, track, boundary_ψ, dir)
-
-    if dir == Backward
-        reverse!(track.segments)
-    end
 
     return nothing
 end
@@ -264,25 +310,25 @@ function tally_φ!(
     prob::MoCProblem,
     track::Track,
     segment::Segment,
+    attenuation::AbstractArray{<:Real,3},
+    segment_idx::Integer,
     boundary_ψ::AbstractVector
 )
     NGroups = ngroups(prob)
     @unpack φ, q = sol
     @unpack quadrature = prob
     @unpack polar, ω = quadrature
-    @unpack sinθs = polar
-    @unpack τ = segment
 
-    i = segment.element
+    i = fsr_id(prob, segment.element)
     a = track.azim_idx
-    n_polar_2 = npolar2(polar)
+    n_polar_half_count = n_polar_half(polar)
 
-    # TODO: is this the best possible loop order?
-    @inbounds for g in 1:NGroups, p in 1:n_polar_2
+    # TODO(performance): benchmark loop order for small NGroups versus larger polar sets.
+    @inbounds for g in 1:NGroups, p in 1:n_polar_half_count
         pg = @reduced_angular_index(p, g)
         ig = @region_index(i, g)
-        Δψ = (boundary_ψ[pg] - q[ig]) * (1 - exp(-τ[g] / sinθs[p]))
-        φ[ig] += 2 * ω[a, p] * Δψ # multiplied by 2 because we only loop in n_polar_2
+        Δψ = (boundary_ψ[pg] - q[ig]) * attenuation[g, p, segment_idx]
+        φ[ig] += 2 * ω[a, p] * Δψ  # Symmetry accounts for the omitted polar half-space.
         boundary_ψ[pg] -= Δψ
     end
 
@@ -301,23 +347,23 @@ function set_start_boundary_ψ!(
     @unpack start_boundary_ψ = sol
     @unpack quadrature = prob
 
-    n_polar_2 = npolar2(quadrature.polar)
+    n_polar_half_count = n_polar_half(quadrature.polar)
 
     if dir == Forward
         next_track = current_track.next_track_fwd
         next_track_dir = dir_next_track_fwd(current_track)
-        flag = !isequal(bc_fwd(current_track), Vaccum)
+        flag = !isequal(bc_fwd(current_track), Vacuum)
     elseif dir == Backward
         next_track = current_track.next_track_bwd
         next_track_dir = dir_next_track_bwd(current_track)
-        flag = !isequal(bc_bwd(current_track), Vaccum)
+        flag = !isequal(bc_bwd(current_track), Vacuum)
     end
 
     t = universal_id(next_track)
     d = Int32(next_track_dir)
 
-    # TODO: is this the best possible loop order?
-    @inbounds for g in 1:NGroups, p in 1:n_polar_2
+    # TODO(performance): benchmark loop order against the boundary-flux memory layout.
+    @inbounds for g in 1:NGroups, p in 1:n_polar_half_count
         tdpg = @angular_index(t, d, p, g)
         pg = @reduced_angular_index(p, g)
         start_boundary_ψ[tdpg] = flag ? boundary_ψ[pg] : zero(T)
@@ -330,8 +376,7 @@ function add_q_to_φ!(sol::MoCSolution, prob::MoCProblem)
     NGroups = ngroups(prob)
     NRegions = nregions(prob)
     @unpack φ, q = sol
-    @unpack trackgenerator = prob
-    @unpack volumes = trackgenerator
+    @unpack volumes = prob
 
     @inbounds for i in 1:NRegions
         xs = getxs(prob, i)
@@ -362,19 +407,19 @@ function residual(sol::MoCSolution{T}, prob::MoCProblem) where {T}
         old_qi = Q[i]
         new_qi = zero(T)
 
-        # total fission source in each region (χ sum 1 when ∫ in g)
+        # Fission source contribution in this region. χ is normalized, so it does not enter
+        # the group-integrated source used for residual convergence.
         if fissionable
             for g′ in 1:NGroups
                 ig′ = @region_index(i, g′)
                 νΣfg′ = νΣf[g′]
                 new_qi += νΣfg′ * φ[ig′]
             end
-            # new_qi = sum(νΣf[g′] * φ[ig′] for g′ in 1:NGroups)
         end
 
         new_qi /= keff
 
-        # total scattering source
+        # Scattering source contribution in this region.
         for g in 1:NGroups, g′ in 1:NGroups
             ig′ = @region_index(i, g′)
             Σsgg′ = Σs0[g′, g]

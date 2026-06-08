@@ -6,13 +6,13 @@ Holds information of the polar quadrature, such as the polar angles `θs` and th
 weights `ωₚ`.
 """
 struct PolarQuadrature{N,T<:Real}
-    sinθs::Vector{T} # TODO: SVector as type!
+    sinθs::Vector{T}  # TODO(performance): store quadrature data as SVectors.
     θs::Vector{T}
     ωₚ::Vector{T}
 end
 
-npolar(::PolarQuadrature{N}) where {N} = N
-npolar2(::PolarQuadrature{N}) where {N} = div(N, 2)
+n_polar(::PolarQuadrature{N}) where {N} = N
+n_polar_half(::PolarQuadrature{N}) where {N} = div(N, 2)
 
 for polar_quad in (:TabuchiYamamoto, :GaussLegendre, :EqualWeight, :EqualAngle, :Leonard)
     @eval begin
@@ -29,14 +29,13 @@ function TabuchiYamamoto(n_polar::Val{N}, T::Type{<:Real}=Float64) where {N}
 
     sinθs, θs, ωₚ = ntuple(_ -> Vector{T}(undef, N), 3)
 
-    # Nuclear Engineering Handbook, pg. 1154
+    # Nuclear Engineering Handbook, p. 1154.
     set_tabuchiyamamoto_data!(n_polar, sinθs, ωₚ)
 
-    # compute remaining data from loaded data
+    # Mirror the tabulated half-range values into the supplementary polar angles.
     for i in 1:div(N, 2)
         θs[i] = asin(sinθs[i])
 
-        # suplementaries
         j = N - i + 1
         sinθs[j] = sinθs[i]
         θs[j] = π - θs[i]
@@ -75,14 +74,13 @@ function GaussLegendre(n_polar::Val{N}, T::Type{<:Real}=Float64) where {N}
 
     sinθs, θs, ωₚ = ntuple(_ -> Vector{T}(undef, N), 3)
 
-    # Nuclear Engineering Handbook, pg. 1153
+    # Nuclear Engineering Handbook, p. 1153.
     set_gausslegendre_data!(n_polar, θs, ωₚ)
 
-    # compute remaining data from loaded data
+    # Mirror the tabulated half-range values into the supplementary polar angles.
     for i in 1:div(N, 2)
         sinθs[i] = sin(θs[i])
 
-        # suplementaries
         j = N - i + 1
         sinθs[j] = sinθs[i]
         θs[j] = π - θs[i]
@@ -163,16 +161,14 @@ function Leonard(n_polar::Val{N}, T::Type{<:Real}=Float64) where {N}
 
     sinθs, θs, ωₚ = ntuple(_ -> Vector{T}(undef, N), 3)
 
-    # TODO: decide which source we should use since Tabuchi paper and OpenMoC have differ.
-    # On the other hand, the Nuclear Engineering Handbook has Herbert optimized values.
-    # The following values are from Tabuchi paper
-    set_leonard_data!(n_polar, θs, ωₚ)
+    # TODO(numerics): choose one authoritative Leonard quadrature source. Tabuchi,
+    # OpenMOC, and the Hebert values in the Nuclear Engineering Handbook differ.
+    set_leonard_data!(n_polar, sinθs, ωₚ)
 
-    # compute remaining data from loaded data
+    # Mirror the tabulated half-range values into the supplementary polar angles.
     for i in 1:div(N, 2)
         θs[i] = asin(sinθs[i])
 
-        # suplementaries
         j = N - i + 1
         sinθs[j] = sinθs[i]
         θs[j] = π - θs[i]
