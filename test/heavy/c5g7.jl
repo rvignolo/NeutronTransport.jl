@@ -16,6 +16,7 @@ const C5G7_BENCHMARK_SETTINGS = (
     segmentize_kwargs=(k=10, rtol=2 * sqrt(eps(Float64))),
     max_iterations=700,
     max_residual=1e-4,
+    parallel=true,
     keff_tolerance_pcm=1500.0,
     material_volume_rtol=3e-2,
 )
@@ -25,24 +26,60 @@ function c5g7_2d_benchmark_result()
     reference = C5G7_2D_REFERENCE
 
     bcs = BoundaryConditions(top=Vacuum, bottom=Reflective, left=Reflective, right=Vacuum)
-    model = c5g7_benchmark_model(; pin_lc=settings.pin_lc)
-    tg = TrackGenerator(model, settings.n_azim, settings.spacing;
-        bcs=bcs, volume_correction=true
-    )
-    trace!(tg)
-    segmentize!(tg; settings.segmentize_kwargs...)
-    prob = MoCProblem(tg, TabuchiYamamoto(settings.n_polar), c5g7_benchmark_materials())
-    sol = solve(prob;
-        max_iterations=settings.max_iterations,
-        max_residual=settings.max_residual
-    )
+    geometry_time = @elapsed begin
+        model = c5g7_benchmark_model(; pin_lc=settings.pin_lc)
+    end
+    track_generator_time = @elapsed begin
+        tg = TrackGenerator(model, settings.n_azim, settings.spacing;
+            bcs=bcs, volume_correction=true
+        )
+    end
+    trace_time = @elapsed trace!(tg)
+    segmentize_time = @elapsed segmentize!(tg; settings.segmentize_kwargs...)
+    problem_time = @elapsed begin
+        prob = MoCProblem(
+            tg, TabuchiYamamoto(settings.n_polar), c5g7_benchmark_materials()
+        )
+    end
+    solve_time = @elapsed begin
+        sol = solve(prob;
+            max_iterations=settings.max_iterations,
+            max_residual=settings.max_residual,
+            parallel=settings.parallel
+        )
+    end
 
     material_volumes = c5g7_material_volumes(model)
     reference_material_volumes = c5g7_analytic_material_volumes()
     keff_error_pcm = 1.0e5 * (sol.keff - reference.keff)
-    return (;
-        prob, tg, sol, keff_error_pcm, material_volumes, reference_material_volumes
+    timings = (;
+        geometry=geometry_time,
+        track_generator=track_generator_time,
+        trace=trace_time,
+        segmentize=segmentize_time,
+        problem=problem_time,
+        solve=solve_time,
     )
+    return (;
+        prob,
+        tg,
+        sol,
+        keff_error_pcm,
+        material_volumes,
+        reference_material_volumes,
+        timings,
+        n_cells=length(tg.volumes),
+        n_tracks=length(tg.tracks_by_uid),
+        n_segments=count_track_segments(tg),
+    )
+end
+
+function count_track_segments(tg)
+    n_segments = 0
+    for track in tg.tracks_by_uid
+        n_segments += length(track.segments)
+    end
+    return n_segments
 end
 
 function c5g7_benchmark_materials()
@@ -159,6 +196,14 @@ end
         calculated_keff = sol.keff,
         keff_error_pcm = result.keff_error_pcm,
         max_material_volume_relerr = maximum(material_volume_relerr),
+        iterations = sol.iterations,
+        residual = sol.residual,
+        parallel = settings.parallel,
+        threads = Base.Threads.nthreads(),
+        n_cells = result.n_cells,
+        n_tracks = result.n_tracks,
+        n_segments = result.n_segments,
+        timings = result.timings,
     )
 
     material_tags = Int32.(1:7)

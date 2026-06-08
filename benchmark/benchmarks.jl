@@ -58,6 +58,14 @@ SUITE["transport"]["compute_phi"] = @benchmarkable NeutronTransport.compute_φ!(
     prob = benchmark_single_cell_problem()
     sol = initialized_solution(prob)
 end
+SUITE["transport"]["residual"] = @benchmarkable NeutronTransport.residual(
+    sol, prob
+) setup=begin
+    prob = benchmark_single_cell_problem()
+    sol = initialized_solution(prob)
+    NeutronTransport.compute_φ!(sol, prob)
+    NeutronTransport.residual(sol, prob)
+end
 
 SUITE["demo"] = BenchmarkGroup()
 SUITE["demo"]["pincell_setup"] = @benchmarkable pincell_problem()

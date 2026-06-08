@@ -9,6 +9,7 @@ struct CrossSections{
     Σt::T
     νΣf::T
     Σs0::S
+    Σs0_sum::T
     fissionable::Bool
 
     # Candidate data for future formulations:
@@ -72,6 +73,10 @@ function CrossSections(
     Σt_dense = Vector{elType}(Σt)
     νΣf_dense = Vector{elType}(νΣf)
     Σs0_dense = Matrix{elType}(Σs0)
+    Σs0_sum_dense = Vector{elType}(undef, NGroups)
+    @inbounds for g′ in 1:NGroups
+        Σs0_sum_dense[g′] = sum(@view Σs0_dense[g′, :])
+    end
 
     fissionable = any(!iszero, νΣf_dense)
     if fissionable
@@ -92,9 +97,10 @@ function CrossSections(
     Σt_out = _cross_section_vector(Σt_dense, Val(NGroups), Val(use_static))
     νΣf_out = _cross_section_vector(νΣf_dense, Val(NGroups), Val(use_static))
     Σs0_out = _cross_section_matrix(Σs0_dense, Val(NGroups), Val(use_static))
+    Σs0_sum_out = _cross_section_vector(Σs0_sum_dense, Val(NGroups), Val(use_static))
 
     return CrossSections{NGroups,elType,typeof(χ_out),typeof(Σs0_out)}(
-        String(name), χ_out, Σt_out, νΣf_out, Σs0_out, fissionable
+        String(name), χ_out, Σt_out, νΣf_out, Σs0_out, Σs0_sum_out, fissionable
     )
 end
 

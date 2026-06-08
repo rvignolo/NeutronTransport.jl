@@ -7,6 +7,7 @@
     @test eltype(mixed) === Float64
     @test mixed.Σt isa Vector{Float64}
     @test mixed.Σs0 isa Matrix{Float64}
+    @test isapprox(mixed.Σs0_sum, [0.35, 0.4]; rtol=1e-6)
     @test mixed.χ == zeros(2)
     @test !NeutronTransport.isfissionable(mixed)
 
@@ -39,6 +40,8 @@
     @test static.χ isa SVector{2,Float64}
     @test static.Σt isa SVector{2,Float64}
     @test static.Σs0 isa SMatrix{2,2,Float64}
+    @test static.Σs0_sum isa SVector{2,Float64}
+    @test isapprox(static.Σs0_sum, SVector(0.35, 0.4); rtol=1e-6)
 
     @test_throws ArgumentError CrossSections("bad", 0; Σt=[1.0], Σs0=reshape([1.0], 1, 1))
     @test_throws ArgumentError CrossSections("bad", 2; Σt=[1.0], Σs0=[1.0 0.0; 0.0 1.0])
