@@ -14,7 +14,7 @@ UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 [compat]
 Gridap = "0.19.11"
 GridapGmsh = "0.7"
-RayTracing = "0.2.4"
+RayTracing = "0.3"
 Reexport = ">=0.2"
 Setfield = ">=0.7"
 StaticArrays = ">=1.0"
