@@ -55,4 +55,6 @@ sol = solve(prob, debug=true)
 import Gridap: writevtk
 import Gridap.Geometry: get_triangulation
 trian = get_triangulation(tg.mesh.model)
-writevtk(trian, "fluxes-pincell", cellfields=["g1" => sol(1), "g2" => sol(2)])
+writevtk(trian, "fluxes-pincell",
+    cellfields=["g1" => cell_scalar_flux(sol, 1), "g2" => cell_scalar_flux(sol, 2)]
+)

@@ -156,6 +156,80 @@ function set_gausslegendre_data!(::Val{12}, θs, ωₚ)
     return nothing
 end
 
+function EqualWeight(n_polar::Val{N}, T::Type{<:Real}=Float64) where {N}
+    iseven(N) || throw(DomainError(N, "number of polar angles for EqualWeight must be even."))
+
+    sinθs, θs, ωₚ = ntuple(_ -> Vector{T}(undef, N), 3)
+    half = div(N, 2)
+    cosθa = one(T)
+
+    for i in 1:half
+        cosθb = cosθa - inv(T(half))
+        θs[i] = acos((cosθa + cosθb) / 2)
+        sinθs[i] = sin(θs[i])
+        cosθa = cosθb
+    end
+
+    set_equal_spacing_weights!(ωₚ, θs, Val(N))
+    mirror_polar_half!(sinθs, θs, ωₚ, Val(N))
+
+    return PolarQuadrature{N,T}(sinθs, θs, ωₚ)
+end
+
+function EqualAngle(n_polar::Val{N}, T::Type{<:Real}=Float64) where {N}
+    iseven(N) || throw(DomainError(N, "number of polar angles for EqualAngle must be even."))
+
+    sinθs, θs, ωₚ = ntuple(_ -> Vector{T}(undef, N), 3)
+    half = div(N, 2)
+    Δθ = T(π) / T(N)
+    θa = zero(T)
+
+    for i in 1:half
+        θb = θa + Δθ
+        θs[i] = acos((cos(θa) + cos(θb)) / 2)
+        sinθs[i] = sin(θs[i])
+        θa = θb
+    end
+
+    set_equal_spacing_weights!(ωₚ, θs, Val(N))
+    mirror_polar_half!(sinθs, θs, ωₚ, Val(N))
+
+    return PolarQuadrature{N,T}(sinθs, θs, ωₚ)
+end
+
+function set_equal_spacing_weights!(ωₚ, θs, ::Val{N}) where {N}
+    half = div(N, 2)
+
+    for i in 1:half
+        y1 = if i < half
+            (cos(θs[i]) - cos(θs[i+1])) / 2
+        else
+            cos(θs[i])
+        end
+
+        y2 = if i > 1
+            (cos(θs[i-1]) - cos(θs[i])) / 2
+        else
+            1 - cos(θs[i])
+        end
+
+        ωₚ[i] = (y1 + y2) / 2
+    end
+
+    return nothing
+end
+
+function mirror_polar_half!(sinθs, θs, ωₚ, ::Val{N}) where {N}
+    for i in 1:div(N, 2)
+        j = N - i + 1
+        sinθs[j] = sinθs[i]
+        θs[j] = π - θs[i]
+        ωₚ[j] = ωₚ[i]
+    end
+
+    return nothing
+end
+
 function Leonard(n_polar::Val{N}, T::Type{<:Real}=Float64) where {N}
     N in _TL_NΘ_ || throw(DomainError(N, "number of polar angles for Leonard must be in $(string(_TL_NΘ_))."))
 

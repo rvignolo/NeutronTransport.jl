@@ -31,3 +31,25 @@ These are some popular examples solved with NeutronTransport:
 | ![](demo/pincell-g1.png) | ![](demo/bwr-g2.png) | ![](demo/c5g7-g7.png) |
 |:-------------:|:-------------:|:-------------:|
 | [*Pincell*](demo/pincell.jl) | [4 by 4 BWR lattice (2 Gd pins)](demo/bwr.jl) | [C5G7 Benchmark](demo/c5g7.jl) |
+
+## Plotting and Export
+
+Plotting backends are optional. NeutronTransport exposes lightweight
+[`RecipesBase.jl`](https://github.com/JuliaPlots/RecipesBase.jl) recipes, so a plotting
+frontend such as Plots.jl can render solution fields without becoming a required runtime
+dependency:
+
+```julia
+using NeutronTransport
+using Plots
+
+plot(CellScalarField(sol, 1))  # scalar flux, energy group 1
+plot(PinPowerMap(pin_powers; active=active_pins))
+```
+
+For VTK export through Gridap, use `cell_scalar_flux(sol, g)` instead of `sol(g)`. This
+expands transport flat source region values back to mesh-cell values, which keeps exports
+correct even when several cells are coalesced into one transport region.
+
+For benchmark-style pin powers or fission-rate diagnostics, provide optional `Σf` data to
+`CrossSections`; eigenvalue solves continue to use `νΣf` for the fission source.

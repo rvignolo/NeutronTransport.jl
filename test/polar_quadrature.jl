@@ -2,7 +2,9 @@
     for constructor in (
         TabuchiYamamoto,
         GaussLegendre,
-        NeutronTransport.Leonard,
+        EqualWeight,
+        EqualAngle,
+        Leonard,
     )
         for n_polar in (2, 4, 6)
             quad = constructor(n_polar)

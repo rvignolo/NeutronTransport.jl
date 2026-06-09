@@ -132,4 +132,6 @@ sol = solve(prob; max_residual=1e-7)
 import Gridap: writevtk
 import Gridap.Geometry: get_triangulation
 trian = get_triangulation(tg.mesh.model)
-writevtk(trian, "c5g7-fluxes-new2", cellfields=[string(Symbol(:g, i)) => sol(i) for i in 1:NGroups])
+writevtk(trian, "c5g7-fluxes-new2",
+    cellfields=[string(Symbol(:g, i)) => cell_scalar_flux(sol, i) for i in 1:NGroups]
+)

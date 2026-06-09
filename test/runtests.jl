@@ -16,6 +16,7 @@ include("fixtures.jl")
     include("openmoc_regressions.jl")
     include("convergence_regressions.jl")
     include("demo_regressions.jl")
+    include("plot_recipes.jl")
     include("moc_solver.jl")
 
     if run_heavy_tests()

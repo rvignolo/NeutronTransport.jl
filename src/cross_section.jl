@@ -1,4 +1,11 @@
 # TODO(feature): support spatially varying cross sections, e.g. via lazy maps over position.
+"""
+    CrossSections(name, NGroups; Σt, Σs0, νΣf=nothing, χ=nothing, Σf=nothing)
+
+Material cross-section data for a multigroup transport solve. `νΣf` is the
+fission-production term used by eigenvalue calculations. Optional `Σf` stores plain
+fission cross sections for diagnostics and reaction-rate tallies, such as pin powers.
+"""
 struct CrossSections{
     NGroups,elType,
     T<:Union{Vector{elType},SVector{NGroups,elType}},
@@ -7,6 +14,7 @@ struct CrossSections{
     name::String
     χ::T
     Σt::T
+    Σf::T
     νΣf::T
     Σs0::S
     Σs0_sum::T
@@ -40,6 +48,7 @@ function CrossSections(
     # Σa = nothing, # TODO(feature): derive Σa from Σt and Σs0 when needed.
 
     # Materials are non-fissionable by default.
+    Σf = nothing,
     νΣf = nothing,
     χ = nothing,
 
@@ -51,8 +60,14 @@ function CrossSections(
     _check_group_vector(:Σt, Σt, NGroups)
     _check_scattering_matrix(:Σs0, Σs0, NGroups)
 
+    if isnothing(Σf)
+        Σf = zeros(_float_eltype(eltype(Σt), eltype(Σs0)), NGroups)
+    else
+        _check_group_vector(:Σf, Σf, NGroups)
+    end
+
     if isnothing(νΣf)
-        νΣf = zeros(_float_eltype(eltype(Σt), eltype(Σs0)), NGroups)
+        νΣf = zeros(_float_eltype(eltype(Σt), eltype(Σs0), eltype(Σf)), NGroups)
     else
         _check_group_vector(:νΣf, νΣf, NGroups)
     end
@@ -63,14 +78,17 @@ function CrossSections(
         _check_group_vector(:χ, χ, NGroups)
     end
 
-    promoted = promote_type(eltype(Σt), eltype(Σs0), eltype(νΣf), eltype(χ))
+    promoted = promote_type(
+        eltype(Σt), eltype(Σs0), eltype(Σf), eltype(νΣf), eltype(χ)
+    )
     promoted <: Real || throw(ArgumentError("cross-section data must be real-valued."))
     elType = _float_eltype(promoted)
 
-    use_static = _uses_static_storage(χ, Σt, νΣf, Σs0)
+    use_static = _uses_static_storage(χ, Σt, Σf, νΣf, Σs0)
 
     χ_dense = Vector{elType}(χ)
     Σt_dense = Vector{elType}(Σt)
+    Σf_dense = Vector{elType}(Σf)
     νΣf_dense = Vector{elType}(νΣf)
     Σs0_dense = Matrix{elType}(Σs0)
     Σs0_sum_dense = Vector{elType}(undef, NGroups)
@@ -95,12 +113,14 @@ function CrossSections(
 
     χ_out = _cross_section_vector(χ_dense, Val(NGroups), Val(use_static))
     Σt_out = _cross_section_vector(Σt_dense, Val(NGroups), Val(use_static))
+    Σf_out = _cross_section_vector(Σf_dense, Val(NGroups), Val(use_static))
     νΣf_out = _cross_section_vector(νΣf_dense, Val(NGroups), Val(use_static))
     Σs0_out = _cross_section_matrix(Σs0_dense, Val(NGroups), Val(use_static))
     Σs0_sum_out = _cross_section_vector(Σs0_sum_dense, Val(NGroups), Val(use_static))
 
     return CrossSections{NGroups,elType,typeof(χ_out),typeof(Σs0_out)}(
-        String(name), χ_out, Σt_out, νΣf_out, Σs0_out, Σs0_sum_out, fissionable
+        String(name), χ_out, Σt_out, Σf_out, νΣf_out,
+        Σs0_out, Σs0_sum_out, fissionable
     )
 end
 
