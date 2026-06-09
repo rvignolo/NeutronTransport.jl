@@ -4,12 +4,12 @@ using GridapGmsh: gmsh, GmshDiscreteModel
 function add_pin!(gmsh, o, r, t, lc)
     factory = gmsh.model.geo
 
-    # inner and outer circle
+    # Fuel and cladding curve loops.
     l1 = add_circle!(gmsh, o, r, lc)
     l2 = add_circle!(gmsh, o, r + t, lc)
 
     s1 = factory.addPlaneSurface([l1])
-    s2 = factory.addPlaneSurface([l2, l1]) # l1 is a hole
+    s2 = factory.addPlaneSurface([l2, l1])  # The fuel loop is a hole in the cladding.
 
     return s1, s2
 end
@@ -18,7 +18,7 @@ function add_circle!(gmsh, o, r, lc)
     factory = gmsh.model.geo
     ox, oy = o
 
-    p1 = factory.addPoint(ox, oy, 0, lc)  # center - origin
+    p1 = factory.addPoint(ox, oy, 0, lc)      # center
     p2 = factory.addPoint(ox + r, oy, 0, lc)  # right
     p3 = factory.addPoint(ox, oy + r, 0, lc)  # up
     p4 = factory.addPoint(ox - r, oy, 0, lc)  # left
@@ -54,7 +54,7 @@ end
 
 N = 17
 
-# in cm
+# Dimensions in cm.
 p = 1.26
 r = 0.54
 lc = 0.5
@@ -62,7 +62,7 @@ lc = 0.5
 gmsh.initialize()
 gmsh.model.add("c5g7")
 
-# tags
+# Material surface tags.
 guidetube = Int32[]
 UO₂ = Int32[]
 MOX_43 = Int32[]
@@ -80,9 +80,9 @@ GT_pos = [( 3, 6), ( 3, 9), (3, 12),
 
 FC_pos = [(9, 9)]
 
-# UO₂ fuel assemblies
+# UO₂ fuel assemblies.
 for n in 1:2
-    # corner
+    # Lower-left assembly corner.
     xc = (n - 1) * N * p
     yc = (n - 1) * N * p
 
@@ -136,16 +136,14 @@ for i in 1:N, j in 1:N
         continue
     elseif pos in MOX_87_pos
         continue
-    # elseif pos in ((5, 4), (13, 4), (4, 5), (14, 5), (4, 13), (14, 13), (5, 14), (13, 14))
-    #     push!(MOX_7_pos, pos)
     else
         push!(MOX_7_pos, pos)
     end
 end
 
-# MOX fuel assemblies
+# MOX fuel assemblies.
 for n in 1:2
-    # corner
+    # Lower-left assembly corner.
     xc = isone(n) ? N * p : 0
     yc = isone(n) ? 0 : N * p
 
@@ -282,14 +280,15 @@ gmsh.model.setPhysicalName(1, pg9, "right")
 gmsh.model.setPhysicalName(1, pg10, "top")
 gmsh.model.setPhysicalName(1, pg11, "left")
 
-# removemos puntos de la geometria duplicados (origenes por ejemplo)
+# Remove duplicate geometry points, including repeated pin origins.
 gmsh.model.geo.removeAllDuplicates()
 
 gmsh.model.geo.synchronize()
 
 gmsh.model.mesh.generate(2)
 
-gmsh.write("c5g7-2.msh")
+mshfile = joinpath(@__DIR__, "c5g7.msh")
+gmsh.write(mshfile)
 
 if !("-nopopup" in ARGS)
     gmsh.fltk.run()
@@ -297,8 +296,7 @@ end
 
 gmsh.finalize()
 
-# move to json file format
+# Convert the mesh to Gridap's JSON format.
 using Gridap
-mshfile = joinpath(@__DIR__,"../c5g7-2.msh")
 model = GmshDiscreteModel(mshfile; renumber=true)
-Gridap.Io.to_json_file(model, "c5g7-2.json")
+Gridap.Io.to_json_file(model, joinpath(@__DIR__, "c5g7.json"))

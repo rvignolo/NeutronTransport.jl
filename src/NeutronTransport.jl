@@ -4,6 +4,7 @@ using UnPack
 using Setfield
 using Reexport
 using StaticArrays
+using RecipesBase
 @reexport using RayTracing
 using Gridap: get_face_labeling
 using Gridap.Geometry: get_face_tag, get_tag_from_name
@@ -36,10 +37,13 @@ include("mocproblem.jl")
 abstract type TransportSolution end
 
 include("mocsolver.jl")
+include("plot_recipes.jl")
 
-export TabuchiYamamoto, GaussLegendre
+export TabuchiYamamoto, GaussLegendre, EqualWeight, EqualAngle, Leonard
 export CrossSections
-export MoCProblem
+export MoCProblem, cell_material_ids
 export solve
+export fsr_to_cell_values, cell_scalar_flux
+export CellScalarField, PinPowerMap
 
 end

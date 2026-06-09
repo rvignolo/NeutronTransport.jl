@@ -1,31 +1,31 @@
 using NeutronTransport
 import Gridap: DiscreteModelFromFile
 
-jsonfile = joinpath(@__DIR__,"bwr.json")
+jsonfile = joinpath(@__DIR__, "bwr.json")
 geometry = DiscreteModelFromFile(jsonfile)
 
-# number of azimuthal angles
+# Number of azimuthal angles.
 nφ = 16
 
-# azimuthal spacing
+# Azimuthal spacing.
 δ = 1e-2
 
-# boundary conditions
+# Boundary conditions.
 bcs = BoundaryConditions(top=Reflective, bottom=Reflective, left=Reflective, right=Reflective)
 
-# initialize track generator
+# Initialize track generator.
 tg = TrackGenerator(geometry, nφ, δ, bcs=bcs)
 
-# perform ray tracing
+# Perform ray tracing.
 trace!(tg)
 
-# proceed to segmentation
+# Split tracks into material segments.
 segmentize!(tg)
 
-# polar quadrature
+# Polar quadrature.
 pq = TabuchiYamamoto(6)
 
-# materials
+# Materials.
 pin = CrossSections("pin", 2;
     νΣf = [1.86278e-2, 3.44137e-1],
     Σt  = [3.62022e-1, 5.72155e-1],
@@ -50,13 +50,15 @@ pin_gd = CrossSections("pin-gd", 2;
 
 xs = [pin, cladding, water, pin_gd]
 
-# define the problem
+# Define the problem.
 prob = MoCProblem(tg, pq, xs)
 
-# solve
+# Solve.
 sol = solve(prob)
 
 import Gridap: writevtk
 import Gridap.Geometry: get_triangulation
 trian = get_triangulation(tg.mesh.model)
-writevtk(trian, "bwr-fluxes", cellfields=["g1" => sol(1), "g2" => sol(2)])
+writevtk(trian, "bwr-fluxes",
+    cellfields=["g1" => cell_scalar_flux(sol, 1), "g2" => cell_scalar_flux(sol, 2)]
+)

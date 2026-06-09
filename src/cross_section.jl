@@ -1,4 +1,11 @@
-# IDEA: We can use lazy_map or map to extend each cross section as a function of position
+# TODO(feature): support spatially varying cross sections, e.g. via lazy maps over position.
+"""
+    CrossSections(name, NGroups; Σt, Σs0, νΣf=nothing, χ=nothing, Σf=nothing)
+
+Material cross-section data for a multigroup transport solve. `νΣf` is the
+fission-production term used by eigenvalue calculations. Optional `Σf` stores plain
+fission cross sections for diagnostics and reaction-rate tallies, such as pin powers.
+"""
 struct CrossSections{
     NGroups,elType,
     T<:Union{Vector{elType},SVector{NGroups,elType}},
@@ -7,15 +14,18 @@ struct CrossSections{
     name::String
     χ::T
     Σt::T
+    Σf::T
     νΣf::T
     Σs0::S
+    Σs0_sum::T
     fissionable::Bool
 
-    # D   :: T1
-    # S   :: T1
-    # Σa  :: T1
-    # eΣf :: T1
-    # Σs1 :: T2
+    # Candidate data for future formulations:
+    # D   :: T1  # diffusion coefficient
+    # S   :: T1  # external source
+    # Σa  :: T1  # absorption cross section
+    # eΣf :: T1  # fission energy release
+    # Σs1 :: T2  # first-order scattering matrix
 end
 const XSs = CrossSections
 
@@ -24,60 +34,120 @@ eltype(::CrossSections{NGroups,elType}) where {NGroups,elType} = elType
 isfissionable(xs::CrossSections) = xs.fissionable
 
 function CrossSections(
-    name::String,
+    name::AbstractString,
     NGroups::Integer;
 
-    # for future diffusion discretization
+    # Future diffusion discretization data.
     # D = nothing,
 
-    # not yet used
+    # Future fixed-source data.
     # S = nothing,
 
     Σt = error("Σt has no default, supply it with keyword."),
     Σs0 = error("Σs0 has no default, supply it with keyword."),
-    # Σa = nothing, # IDEA: can be computed using Σt and Σs0
+    # Σa = nothing, # TODO(feature): derive Σa from Σt and Σs0 when needed.
 
-    # assume not fissionable material
-    νΣf = zeros(promote_type(eltype.((Σt, Σs0))...), NGroups),
-    χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), NGroups),
+    # Materials are non-fissionable by default.
+    Σf = nothing,
+    νΣf = nothing,
+    χ = nothing,
 
-    # for future implementations (?)
+    # Future anisotropic scattering data.
     # Σs1 = nothing
 )
+    NGroups > 0 || throw(ArgumentError("`NGroups` must be positive."))
 
-    if iszero(sum(νΣf))
-        fissionable = false
-        fill!(χ, zero(eltype(χ)))
+    _check_group_vector(:Σt, Σt, NGroups)
+    _check_scattering_matrix(:Σs0, Σs0, NGroups)
+
+    if isnothing(Σf)
+        Σf = zeros(_float_eltype(eltype(Σt), eltype(Σs0)), NGroups)
     else
-        fissionable = true
-        if iszero(sum(χ))
-            χ = zeros(promote_type(eltype.((Σt, νΣf, Σs0))...), NGroups)
-            χ[1] = 1
+        _check_group_vector(:Σf, Σf, NGroups)
+    end
+
+    if isnothing(νΣf)
+        νΣf = zeros(_float_eltype(eltype(Σt), eltype(Σs0), eltype(Σf)), NGroups)
+    else
+        _check_group_vector(:νΣf, νΣf, NGroups)
+    end
+
+    if isnothing(χ)
+        χ = zeros(_float_eltype(eltype(Σt), eltype(Σs0), eltype(νΣf)), NGroups)
+    else
+        _check_group_vector(:χ, χ, NGroups)
+    end
+
+    promoted = promote_type(
+        eltype(Σt), eltype(Σs0), eltype(Σf), eltype(νΣf), eltype(χ)
+    )
+    promoted <: Real || throw(ArgumentError("cross-section data must be real-valued."))
+    elType = _float_eltype(promoted)
+
+    use_static = _uses_static_storage(χ, Σt, Σf, νΣf, Σs0)
+
+    χ_dense = Vector{elType}(χ)
+    Σt_dense = Vector{elType}(Σt)
+    Σf_dense = Vector{elType}(Σf)
+    νΣf_dense = Vector{elType}(νΣf)
+    Σs0_dense = Matrix{elType}(Σs0)
+    Σs0_sum_dense = Vector{elType}(undef, NGroups)
+    @inbounds for g′ in 1:NGroups
+        Σs0_sum_dense[g′] = sum(@view Σs0_dense[g′, :])
+    end
+
+    fissionable = any(!iszero, νΣf_dense)
+    if fissionable
+        sumχ = sum(χ_dense)
+        if iszero(sumχ)
+            fill!(χ_dense, zero(elType))
+            χ_dense[1] = one(elType)
         else
-            if !isone(sum(χ))
-                error("χ *must* add up to 1.")
-            end
+            isapprox(sumχ, one(elType)) ||
+                throw(ArgumentError("`χ` must sum to one for fissionable materials."))
+            χ_dense ./= sumχ
         end
-    end
-
-    χ, Σt, νΣf = promote(χ, Σt, νΣf)
-
-    if eltype(Σs0) != eltype(χ)
-        elType = promote_type(eltype.(χ, Σs0))
-
-        # TODO: convert everything to share element type here y object type (SArray or Array)
-
-        # then, get the types
-        T = typeof(χ)
-        S = typeof(Σs0)
     else
-        elType = eltype(χ)
-
-        # TODO: convert to share object type (SArray or Array) or ar least make sure they match
-
-        T = typeof(χ)
-        S = typeof(Σs0)
+        fill!(χ_dense, zero(elType))
     end
 
-    return CrossSections{NGroups,elType,T,S}(name, χ, Σt, νΣf, Σs0, fissionable)
+    χ_out = _cross_section_vector(χ_dense, Val(NGroups), Val(use_static))
+    Σt_out = _cross_section_vector(Σt_dense, Val(NGroups), Val(use_static))
+    Σf_out = _cross_section_vector(Σf_dense, Val(NGroups), Val(use_static))
+    νΣf_out = _cross_section_vector(νΣf_dense, Val(NGroups), Val(use_static))
+    Σs0_out = _cross_section_matrix(Σs0_dense, Val(NGroups), Val(use_static))
+    Σs0_sum_out = _cross_section_vector(Σs0_sum_dense, Val(NGroups), Val(use_static))
+
+    return CrossSections{NGroups,elType,typeof(χ_out),typeof(Σs0_out)}(
+        String(name), χ_out, Σt_out, Σf_out, νΣf_out,
+        Σs0_out, Σs0_sum_out, fissionable
+    )
 end
+
+function _check_group_vector(name::Symbol, xs, NGroups::Integer)
+    xs isa AbstractVector ||
+        throw(ArgumentError("`$name` must be a vector with $NGroups entries."))
+    length(xs) == NGroups ||
+        throw(ArgumentError("`$name` must have length $NGroups; got $(length(xs))."))
+    return nothing
+end
+
+function _check_scattering_matrix(name::Symbol, xs, NGroups::Integer)
+    xs isa AbstractMatrix ||
+        throw(ArgumentError("`$name` must be a $NGroups by $NGroups matrix."))
+    size(xs) == (NGroups, NGroups) ||
+        throw(ArgumentError("`$name` must have size ($NGroups, $NGroups); got $(size(xs))."))
+    return nothing
+end
+
+_float_eltype(types::Type...) = typeof(float(zero(promote_type(types...))))
+
+_uses_static_storage(xs...) = any(x -> x isa StaticArray, xs)
+
+_cross_section_vector(xs::Vector{T}, ::Val{N}, ::Val{false}) where {N,T} = xs
+_cross_section_vector(xs::Vector{T}, ::Val{N}, ::Val{true}) where {N,T} =
+    SVector{N,T}(xs)
+
+_cross_section_matrix(xs::Matrix{T}, ::Val{N}, ::Val{false}) where {N,T} = xs
+_cross_section_matrix(xs::Matrix{T}, ::Val{N}, ::Val{true}) where {N,T} =
+    SMatrix{N,N,T}(xs)

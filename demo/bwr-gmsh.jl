@@ -4,12 +4,12 @@ using GridapGmsh: gmsh, GmshDiscreteModel
 function add_pin!(gmsh, o, r, t, lc)
     factory = gmsh.model.geo
 
-    # inner and outer circle
+    # Fuel and cladding curve loops.
     l1 = add_circle!(gmsh, o, r, lc)
     l2 = add_circle!(gmsh, o, r + t, lc)
 
     s1 = factory.addPlaneSurface([l1])
-    s2 = factory.addPlaneSurface([l2, l1]) # l1 is a hole
+    s2 = factory.addPlaneSurface([l2, l1])  # The fuel loop is a hole in the cladding.
 
     return s1, s2
 end
@@ -18,7 +18,7 @@ function add_circle!(gmsh, o, r, lc)
     factory = gmsh.model.geo
     ox, oy = o
 
-    p1 = factory.addPoint(ox, oy, 0, lc)  # center - origin
+    p1 = factory.addPoint(ox, oy, 0, lc)      # center
     p2 = factory.addPoint(ox + r, oy, 0, lc)  # right
     p3 = factory.addPoint(ox, oy + r, 0, lc)  # up
     p4 = factory.addPoint(ox - r, oy, 0, lc)  # left
@@ -54,7 +54,7 @@ end
 
 N = 4
 
-# in cm
+# Dimensions in cm.
 p = 1.6        # pitch
 ri = 0.5       # internal radius
 t = 0.1        # wall thickness
@@ -64,12 +64,12 @@ lc = 0.1
 gmsh.initialize()
 gmsh.model.add("bwr")
 
-# tags
+# Material surface tags.
 pinTags = Int32[]
 cladTags = Int32[]
 gdPinTags = Int32[]
 
-# gd pins positions
+# Gadolinium pin positions.
 GD_pos = [(2, 3), (3, 2)]
 
 for i in 1:N, j in 1:N
@@ -85,7 +85,7 @@ for i in 1:N, j in 1:N
     end
 end
 
-#! TODO: h2oTag = add_reflector!(gmsh, 4p)
+# TODO(refactor): extract square moderator construction into a reusable helper.
 s = N * p
 factory = gmsh.model.geo
 
@@ -121,14 +121,15 @@ gmsh.model.setPhysicalName(1, pg6, "right")
 gmsh.model.setPhysicalName(1, pg7, "top")
 gmsh.model.setPhysicalName(1, pg8, "left")
 
-# removemos puntos de la geometria duplicados (origenes por ejemplo)
+# Remove duplicate geometry points, including repeated pin origins.
 gmsh.model.geo.removeAllDuplicates()
 
 gmsh.model.geo.synchronize()
 
 gmsh.model.mesh.generate(2)
 
-gmsh.write("bwr.msh")
+mshfile = joinpath(@__DIR__, "bwr.msh")
+gmsh.write(mshfile)
 
 if !("-nopopup" in ARGS)
     gmsh.fltk.run()
@@ -136,8 +137,7 @@ end
 
 gmsh.finalize()
 
-# move to json file format
+# Convert the mesh to Gridap's JSON format.
 using Gridap
-mshfile = joinpath(@__DIR__,"bwr.msh")
 model = GmshDiscreteModel(mshfile; renumber=true)
-Gridap.Io.to_json_file(model, "bwr.json")
+Gridap.Io.to_json_file(model, joinpath(@__DIR__, "bwr.json"))

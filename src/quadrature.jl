@@ -1,4 +1,4 @@
-import RayTracing: AzimuthalQuadrature, nazim2
+import RayTracing: AzimuthalQuadrature, n_azim_half
 
 """
     Quadrature{A<:AzimuthalQuadrature,P<:PolarQuadrature,T<:Real}
@@ -11,19 +11,19 @@ struct Quadrature{T<:Real,A<:AzimuthalQuadrature,P<:PolarQuadrature}
     ω::Matrix{T}
 end
 
-function Quadrature(azimuthal::AzimuthalQuadrature{Na,T}, polar::PolarQuadrature{Np,T}) where {Na,Np,T}
+function Quadrature(
+    azimuthal::AzimuthalQuadrature{Na,N2,N4,T}, polar::PolarQuadrature{Np,T}
+) where {Na,N2,N4,Np,T}
     @unpack δs, ωₐ = azimuthal
     @unpack sinθs, ωₚ = polar
-    n_azim_2 = nazim2(azimuthal)
-    n_polar_2 = npolar2(polar)
+    n_azim_half_count = n_azim_half(azimuthal)
+    n_polar_half_count = n_polar_half(polar)
 
-    # IDEA: I think we can use n_azim_4 because the matrix has repeated values
-    ω = Matrix{T}(undef, n_azim_2, n_polar_2)
+    # TODO(performance): store only quadrant weights if the sweep can reuse symmetry.
+    ω = Matrix{T}(undef, n_azim_half_count, n_polar_half_count)
 
-    for i in 1:n_azim_2, j in 1:n_polar_2
+    for i in 1:n_azim_half_count, j in 1:n_polar_half_count
         ω[i, j] = 4π * ωₐ[i] * ωₚ[j] * δs[i] * sinθs[j]
     end
-    # ω .*= 4π
-
     return Quadrature(azimuthal, polar, ω)
 end
